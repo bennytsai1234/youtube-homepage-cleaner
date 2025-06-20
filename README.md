@@ -40,7 +40,7 @@ YouTube 首頁淨化大師 (v7.1 全功能啟用版) - 一個強大的油猴腳�
 
 點擊下方的連結即可安裝：
 
-➡️ **[點我安裝腳本 (Install Script)](https://github.com/YOUR_USERNAME/youtube-homepage-cleaner/raw/main/youtube-homepage-cleaner.user.js)** ⬅️
+➡️ **[點我安裝腳本 (Install Script)](https://github.com/bennytsai1234/youtube-homepage-cleaner/raw/main/youtube-homepage-cleaner.user.js)** ⬅️
 
 您的腳本管理器將會跳出一個確認頁面，點擊「安裝」即可完成。
 🤝 貢獻

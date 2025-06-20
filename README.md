@@ -43,10 +43,13 @@ YouTube 首頁淨化大師 (v7.1 全功能啟用版) - 一個強大的油猴腳�
 ➡️ **[點我安裝腳本 (Install Script)](https://github.com/bennytsai1234/youtube-homepage-cleaner/raw/main/youtube-homepage-cleaner.user.js)** ⬅️
 
 您的腳本管理器將會跳出一個確認頁面，點擊「安裝」即可完成。
+
 🤝 貢獻
 歡迎任何形式的貢獻！如果您發現了 BUG、有新的功能建議，或想優化現有程式碼，請隨時提交 Issues 或發起 Pull Request。
+
 🙏 致謝
 Benny：創作了 v6.2 版本的完美過濾邏輯。
 Gemini (Google)：進行了 v7.x 的健壯性重構與功能擴展。
+
 📄 授權條款
 本專案採用 MIT License 授權。

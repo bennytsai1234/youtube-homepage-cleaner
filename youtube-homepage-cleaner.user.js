@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         YouTube 首頁淨化大師 (v8.5 - 巡邏增強版)
+// @name         YouTube 首頁淨化大師 (v8.7 - 精準豁免版)
 // @namespace    http://tampermonkey.net/
-// @version      8.5
-// @description  為解決偶發性攔截失敗問題，引入「定時巡邏掃描」機制作為第三道防線，定期檢查並清除所有漏網之魚，顯著提升過濾的穩定性與可靠性。
-// @author       Benny (v6.2) & Gemini (v8.0) & GPT-4 (v8.1-v8.5 Refinement)
+// @version      8.7
+// @description  根據使用者提供的HTML，優化「低觀看數過濾」的豁免邏輯。現在會透過偵測頻道旁的「可見徽章」(如認證標記)來精準地豁免已訂閱或重要頻道，可靠性大幅提升。
+// @author       Benny (v6.2) & Gemini (v8.0) & GPT-4 (v8.1-v8.7 Refinement)
 // @match        https://www.youtube.com/*
 // @grant        GM_info
 // @run-at       document-start
@@ -16,76 +16,70 @@
 
     // --- 設定區 (Configuration Area) ---
     const CONFIG = {
-        // [v8.5 新增] 是否啟用定時巡邏掃描。這能有效解決因渲染時機問題導致的偶發性攔截失敗。
+        ENABLE_LOW_VIEW_FILTER: true,
+        LOW_VIEW_THRESHOLD: 1000,
         ENABLE_PERIODIC_SCAN: true,
-        // [v8.5 新增] 巡邏掃描的時間間隔（毫秒）。1500ms = 1.5秒。
         PERIODIC_SCAN_INTERVAL: 1500,
-
         TOP_LEVEL_CONTAINER_SELECTOR: `
-            ytd-rich-item-renderer,
-            ytd-rich-section-renderer,
-            ytd-video-renderer,
-            ytd-compact-video-renderer,
-            ytd-reel-shelf-renderer,
-            ytd-ad-slot-renderer,
+            ytd-rich-item-renderer, ytd-rich-section-renderer, ytd-video-renderer,
+            ytd-compact-video-renderer, ytd-reel-shelf-renderer, ytd-ad-slot-renderer,
             ytd-statement-banner-renderer
         `,
         signatureRules: [
-            // ... 規則內容與 v8.4 相同，此處省略以保持簡潔 ...
-            // 規則組 1: 會員內容
-            {
-                name: '會員專屬內容',
-                signatureSelector: '.badge-style-type-members-only, [aria-label*="會員專屬"], [aria-label*="Members only"]',
-            },
-            // 規則組 2: 區塊標題
-            {
-                name: 'Shorts 區塊',
-                signatureSelector: 'ytd-rich-shelf-renderer #title, ytd-reel-shelf-renderer #title',
-                textKeyword: /^Shorts$/i
-            },
-            {
-                name: '新聞快報區塊',
-                signatureSelector: 'ytd-rich-shelf-renderer #title',
-                textKeyword: /新聞快報|Breaking news/i
-            },
-            {
-                name: '為你推薦區塊',
-                signatureSelector: 'ytd-rich-shelf-renderer #title',
-                textKeyword: /為你推薦|For you/i
-            },
-            {
-                name: '最新貼文區塊',
-                signatureSelector: 'ytd-rich-shelf-renderer #title',
-                textKeyword: /最新( YouTube )?貼文|Latest posts/i
-            },
-            {
-                name: '音樂合輯/播放清單區塊',
-                signatureSelector: 'ytd-rich-shelf-renderer #title, ytd-playlist-renderer #title',
-                textKeyword: /合輯|Mixes|Playlist/i
-            },
-            {
-                name: '頻道推薦區塊',
-                signatureSelector: 'ytd-rich-shelf-renderer #title',
-                textKeyword: /推薦頻道|Channels for you|Similar channels/i
-            },
-            // 規則組 3: 廣告/促銷
-            {
-                name: '各類廣告/促銷',
-                signatureSelector: 'ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-premium-promo-renderer, ytd-in-feed-ad-layout-renderer, ytd-display-ad-renderer, .ytp-ad-text, [aria-label*="廣告"], [aria-label*="Sponsor"]',
-            },
-            {
-                name: '頂部橫幅(聲明/資訊)',
-                signatureSelector: 'ytd-statement-banner-renderer',
-            },
-            // 規則組 4: 連結特徵
-            {
-                name: '單一 Shorts 影片',
-                signatureSelector: 'a#thumbnail[href*="/shorts/"]',
-            }
-        ]
+            { name: '會員專屬內容', signatureSelector: '.badge-style-type-members-only, [aria-label*="會員專屬"], [aria-label*="Members only"]'},
+            { name: 'Shorts 區塊', signatureSelector: 'ytd-rich-shelf-renderer #title, ytd-reel-shelf-renderer #title', textKeyword: /^Shorts$/i },
+            { name: '新聞快報區塊', signatureSelector: 'ytd-rich-shelf-renderer #title', textKeyword: /新聞快報|Breaking news/i },
+            { name: '為你推薦區塊', signatureSelector: 'ytd-rich-shelf-renderer #title', textKeyword: /為你推薦|For you/i },
+            { name: '最新貼文區塊', signatureSelector: 'ytd-rich-shelf-renderer #title', textKeyword: /最新( YouTube )?貼文|Latest posts/i },
+            { name: '音樂合輯/播放清單區塊', signatureSelector: 'ytd-rich-shelf-renderer #title, ytd-playlist-renderer #title', textKeyword: /合輯|Mixes|Playlist/i },
+            { name: '頻道推薦區塊', signatureSelector: 'ytd-rich-shelf-renderer #title', textKeyword: /推薦頻道|Channels for you|Similar channels/i },
+            { name: '各類廣告/促銷', signatureSelector: 'ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-premium-promo-renderer, ytd-in-feed-ad-layout-renderer, ytd-display-ad-renderer, .ytp-ad-text, [aria-label*="廣告"], [aria-label*="Sponsor"]' },
+            { name: '頂部橫幅(聲明/資訊)', signatureSelector: 'ytd-statement-banner-renderer' },
+            { name: '單一 Shorts 影片', signatureSelector: 'a#thumbnail[href*="/shorts/"]' }
+        ],
     };
 
     // --- 核心邏輯 (Core Logic) ---
+
+    const parseViewCount = (text) => {
+        if (!text) return null;
+        const cleanedText = text.toLowerCase().replace(/觀看次數：|次|,|views/g, '').trim();
+        const num = parseFloat(cleanedText);
+        if (isNaN(num)) return null;
+        if (cleanedText.includes('萬') || cleanedText.includes('万')) return Math.floor(num * 10000);
+        if (cleanedText.includes('k')) return Math.floor(num * 1000);
+        if (cleanedText.includes('m')) return Math.floor(num * 1000000);
+        return Math.floor(num);
+    };
+
+    const functionalRules = [];
+    if (CONFIG.ENABLE_LOW_VIEW_FILTER) {
+        functionalRules.push({
+            name: `低觀看數影片 (低於 ${CONFIG.LOW_VIEW_THRESHOLD})`,
+            targetSelector: 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer',
+            condition: (videoCard) => {
+                // ******** v8.7 判斷邏輯升級 ********
+                // 步驟 1: 檢查頻道名稱旁是否有任何「可見的徽章」(如認證勾勾)。
+                // 如果有，就代表是重要頻道，不進行過濾。
+                const visibleBadge = videoCard.querySelector('#channel-name ytd-badge-supported-renderer:not([hidden])');
+                if (visibleBadge) {
+                    return false; // 發現可見徽章，豁免此影片
+                }
+                // **********************************
+
+                const metaSpans = videoCard.querySelectorAll('#metadata-line .inline-metadata-item');
+                let viewCountText = null;
+                metaSpans.forEach(span => {
+                    const text = span.textContent || '';
+                    if (text.includes('觀看') || text.toLowerCase().includes('view')) viewCountText = text;
+                });
+                if (!viewCountText) return false;
+                const views = parseViewCount(viewCountText);
+                if (views === null) return false;
+                return views < CONFIG.LOW_VIEW_THRESHOLD;
+            }
+        });
+    }
 
     const SCRIPT_INFO = (() => {
         try { return { version: GM_info.script.version, name: GM_info.script.name }; }
@@ -93,46 +87,41 @@
     })();
 
     const processedElements = new WeakSet();
-
-    const formattedContainerSelector = CONFIG.TOP_LEVEL_CONTAINER_SELECTOR
-        .split('\n')
-        .map(line => line.replace(/\/\*.*?\*\//g, '').replace(/,/g, '').trim())
-        .filter(Boolean)
-        .join(', ');
+    const formattedContainerSelector = CONFIG.TOP_LEVEL_CONTAINER_SELECTOR.replace(/\s/g, '');
 
     const hideElementAndContainer = (element, ruleName, source = 'observer') => {
-        if (!element || processedElements.has(element)) {
-            return;
-        }
+        if (!element || processedElements.has(element)) return;
         const topLevelContainer = element.closest(formattedContainerSelector);
         const elementToHide = topLevelContainer || element;
-        if (processedElements.has(elementToHide)) {
-            return;
-        }
+        if (processedElements.has(elementToHide)) return;
 
         elementToHide.style.display = 'none';
         processedElements.add(elementToHide);
         processedElements.add(element);
 
-        const logSource = source === 'periodic' ? '巡邏' : '即時';
+        const logSource = source === 'periodic' ? '巡邏' : (source === 'initial' ? '初掃' : '即時');
         console.log(`%c[${SCRIPT_INFO.name}] 已隱藏 (${logSource}): "${ruleName}" (容器: <${elementToHide.tagName.toLowerCase()}>)`, 'color: #fd7e14;');
     };
 
     const processNode = (node, source = 'observer') => {
-        if (node.nodeType !== Node.ELEMENT_NODE) {
-            return;
-        }
-        for (const rule of CONFIG.signatureRules) {
-            const signatureElements = node.matches(rule.signatureSelector)
-                ? [node]
-                : Array.from(node.querySelectorAll(rule.signatureSelector));
+        if (node.nodeType !== Node.ELEMENT_NODE) return;
 
+        for (const rule of CONFIG.signatureRules) {
+            const signatureElements = node.matches(rule.signatureSelector) ? [node] : Array.from(node.querySelectorAll(rule.signatureSelector));
             if (signatureElements.length > 0) {
                  for (const signatureEl of signatureElements) {
-                    if (rule.textKeyword && !rule.textKeyword.test(signatureEl.textContent?.trim() || '')) {
-                        continue;
-                    }
+                    if (rule.textKeyword && !rule.textKeyword.test(signatureEl.textContent?.trim() || '')) continue;
                     hideElementAndContainer(signatureEl, rule.name, source);
+                }
+            }
+        }
+
+        for (const rule of functionalRules) {
+            const targetElements = node.matches(rule.targetSelector) ? [node] : Array.from(node.querySelectorAll(rule.targetSelector));
+            for (const targetEl of targetElements) {
+                if (processedElements.has(targetEl)) continue; // 已處理過則跳過，提升效率
+                if (rule.condition(targetEl)) {
+                    hideElementAndContainer(targetEl, rule.name, source);
                 }
             }
         }
@@ -141,33 +130,18 @@
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
             if (mutation.type === 'childList') {
-                for (const addedNode of mutation.addedNodes) {
-                    processNode(addedNode, 'observer'); // 來源是即時監控
-                }
+                for (const addedNode of mutation.addedNodes) processNode(addedNode, 'observer');
             }
         }
     });
 
     const run = () => {
-        console.log(`%c[${SCRIPT_INFO.name} v${SCRIPT_INFO.version}] 初始化完畢，三道防線已啟動：`, 'color: #17a2b8; font-weight: bold;');
-        
-        // --- 第一道防線：立即掃描已存在內容 ---
-        console.log('%c  1. [立即掃描] 已完成對現有內容的初步淨化。', 'color: #17a2b8;');
+        console.log(`%c[${SCRIPT_INFO.name} v${SCRIPT_INFO.version}] 初始化完畢，過濾系統已啟動。`, 'color: #17a2b8; font-weight: bold;');
         processNode(document.body, 'initial');
-        
-        // --- 第二道防線：啟動動態監控 ---
-        console.log('%c  2. [即時監控] MutationObserver 已啟動，監控後續新增內容。', 'color: #17a2b8;');
-        observer.observe(document.documentElement, {
-            childList: true,
-            subtree: true
-        });
-        
-        // --- 第三道防線：啟動定時巡邏 ---
+        observer.observe(document.documentElement, { childList: true, subtree: true });
         if (CONFIG.ENABLE_PERIODIC_SCAN) {
-            setInterval(() => {
-                processNode(document.body, 'periodic'); // 來源是巡邏掃描
-            }, CONFIG.PERIODIC_SCAN_INTERVAL);
-            console.log(`%c  3. [定時巡邏] 安全巡邏機制已啟動，每 ${CONFIG.PERIODIC_SCAN_INTERVAL / 1000} 秒檢查一次漏網之魚。`, 'color: #17a2b8;');
+            setInterval(() => processNode(document.body, 'periodic'), CONFIG.PERIODIC_SCAN_INTERVAL);
+            console.log(`%c  - 定時巡邏已開啟 (每 ${CONFIG.PERIODIC_SCAN_INTERVAL / 1000} 秒)。`, 'color: #17a2b8;');
         }
     };
 

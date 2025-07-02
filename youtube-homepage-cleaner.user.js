@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         YouTube 首頁淨化大師 (v8.8 - 智慧巡邏版)
+// @name         YouTube 首頁淨化大師 (v8.9 - 崩潰修正版)
 // @namespace    http://tampermonkey.net/
-// @version      8.8
-// @description  核心優化：引入「處理標記(data-yt-purifier-processed)」機制，使巡邏掃描只針對從未處理過的新元素，大幅減少DOM操作，從根源上解決與YouTube原生腳本的衝突，避免點擊失效問題。
-// @author       Benny (v6.2) & Gemini (v8.0) & GPT-4 (v8.1-v8.8 Refinement)
+// @version      8.9
+// @description  修正 v8.8 中因 dataset 命名規則錯誤導致的腳本崩潰問題。改用 setAttribute 進行標記，增強穩定性。
+// @author       Benny (v6.2) & Gemini (v8.0) & GPT-4 (v8.1-v8.9 Refinement)
 // @match        https://www.youtube.com/*
 // @grant        GM_info
 // @run-at       document-start
@@ -39,7 +39,8 @@
         ],
     };
 
-    const PROCESSED_MARKER = 'yt-purifier-processed'; // v8.8 新增：處理標記
+    // v8.9 修正: 直接使用合法的 HTML data 屬性名
+    const PROCESSED_MARKER = 'data-yt-purifier-processed';
 
     const parseViewCount = (text) => {
         if (!text) return null;
@@ -56,6 +57,7 @@
     if (CONFIG.ENABLE_LOW_VIEW_FILTER) {
         functionalRules.push({
             name: `低觀看數影片 (低於 ${CONFIG.LOW_VIEW_THRESHOLD})`,
+            // v8.9 修正: 使用標準的屬性選擇器
             targetSelector: `
                 ytd-rich-item-renderer:not([${PROCESSED_MARKER}]), 
                 ytd-video-renderer:not([${PROCESSED_MARKER}]), 
@@ -89,9 +91,10 @@
         const topLevelContainer = element.closest(formattedContainerSelector);
         const elementToHide = topLevelContainer || element;
         
-        // 使用 dataset 進行標記，取代 WeakSet，因為我們需要在 CSS 選擇器中使用它
-        if (elementToHide.dataset[PROCESSED_MARKER]) return;
-        elementToHide.dataset[PROCESSED_MARKER] = 'hidden'; // 標記為已隱藏
+        // v8.9 修正: 使用 hasAttribute 檢查
+        if (elementToHide.hasAttribute(PROCESSED_MARKER)) return;
+        // v8.9 修正: 使用 setAttribute 標記
+        elementToHide.setAttribute(PROCESSED_MARKER, 'hidden');
 
         elementToHide.style.display = 'none';
 
@@ -102,32 +105,37 @@
     const processNode = (node, source = 'observer') => {
         if (node.nodeType !== Node.ELEMENT_NODE) return;
 
-        // v8.8 優化：在選擇器中加入 :not([${PROCESSED_MARKER}]) 來避免重複處理
+        // v8.9 修正: 使用標準的屬性選擇器
         const buildSelector = (selector) => `${selector}:not([${PROCESSED_MARKER}])`;
 
-        // 執行傳統的特徵規則
         for (const rule of CONFIG.signatureRules) {
-            const finalSelector = buildSelector(rule.signatureSelector);
-            const signatureElements = node.matches(finalSelector) ? [node] : Array.from(node.querySelectorAll(finalSelector));
+            // 注意：這裡的查詢選擇器邏輯維持不變，因為 :not() 是給 querySelectorAll 使用的
+            const querySelector = `${rule.signatureSelector}:not([${PROCESSED_MARKER}])`;
+            const signatureElements = node.matches(querySelector) ? [node] : Array.from(node.querySelectorAll(querySelector));
             
             for (const signatureEl of signatureElements) {
+                const container = signatureEl.closest(formattedContainerSelector) || signatureEl;
+                // 再次檢查，因為 querySelectorAll 無法完全避免已處理的父元素下的新匹配
+                if (container.hasAttribute(PROCESSED_MARKER)) continue;
+
                 if (rule.textKeyword && !rule.textKeyword.test(signatureEl.textContent?.trim() || '')) {
-                    (signatureEl.closest(formattedContainerSelector) || signatureEl).dataset[PROCESSED_MARKER] = 'checked';
+                    container.setAttribute(PROCESSED_MARKER, 'checked'); // 標記為已檢查但未隱藏
                     continue;
                 }
                 hideElementAndContainer(signatureEl, rule.name, source);
             }
         }
 
-        // 執行新的智慧型規則
         for (const rule of functionalRules) {
             const targetElements = node.matches(rule.targetSelector) ? [node] : Array.from(node.querySelectorAll(rule.targetSelector));
             for (const targetEl of targetElements) {
+                // 由於選擇器已經包含了 :not()，這裡的二次檢查是為了保險
+                if (targetEl.hasAttribute(PROCESSED_MARKER)) continue;
+
                 if (rule.condition(targetEl)) {
                     hideElementAndContainer(targetEl, rule.name, source);
                 } else {
-                    // 即使不隱藏，也要標記為已處理，避免巡邏兵重複檢查
-                    targetEl.dataset[PROCESSED_MARKER] = 'checked';
+                    targetEl.setAttribute(PROCESSED_MARKER, 'checked');
                 }
             }
         }

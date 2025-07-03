@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         YouTube 首頁淨化大師 (v9.0 - 最終穩定版)
+// @name         YouTube 首頁淨化大師 (v9.2 - 零空間佔用穩定版)
 // @namespace    http://tampermonkey.net/
-// @version      9.0
-// @description  終極架構優化：移除“已檢查(checked)”狀態，從根本上解決因內容延遲載入導致的偶發性過濾失效問題。現在，所有未被隱藏的元素都將被反覆巡邏，確保萬無一失。
-// @author       Benny (v6.2) & Gemini (v8.0) & GPT-4 (v8.1-v9.0 Refinement)
+// @version      9.2
+// @description  終極佈局優化！採用「塌縮式隱藏」策略，將被過濾的元素尺寸歸零，使其在佈局中不佔據任何空間，完美解決殘留空白問題，同時確保與YouTube原生腳本的最高相容性。
+// @author       Benny (v6.2) & Gemini (v8.0) & GPT-4 (v8.1-v9.2 Refinement)
 // @match        https://www.youtube.com/*
 // @grant        GM_info
 // @run-at       document-start
@@ -20,6 +20,8 @@
         LOW_VIEW_THRESHOLD: 1000,
         ENABLE_PERIODIC_SCAN: true,
         PERIODIC_SCAN_INTERVAL: 1500,
+        MAX_PATROLS: 10,
+
         TOP_LEVEL_CONTAINER_SELECTOR: `
             ytd-rich-item-renderer, ytd-rich-section-renderer, ytd-video-renderer,
             ytd-compact-video-renderer, ytd-reel-shelf-renderer, ytd-ad-slot-renderer,
@@ -59,7 +61,7 @@
             targetSelector: `ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer`,
             condition: (videoCard) => {
                 const visibleBadge = videoCard.querySelector('#channel-name ytd-badge-supported-renderer:not([hidden])');
-                if (visibleBadge) return { shouldHide: false, isFinal: true }; // 豁免重要頻道，且決定是最終的
+                if (visibleBadge) return { shouldHide: false, isFinal: true };
 
                 const metaSpans = videoCard.querySelectorAll('#metadata-line .inline-metadata-item');
                 let viewCountText = null;
@@ -68,12 +70,12 @@
                     if (text.includes('觀看') || text.toLowerCase().includes('view')) viewCountText = text;
                 });
 
-                if (!viewCountText) return { shouldHide: false, isFinal: false }; // 觀看次數資訊還沒出來，不是最終決定
+                if (!viewCountText) return { shouldHide: false, isFinal: false };
 
                 const views = parseViewCount(viewCountText);
-                if (views === null) return { shouldHide: false, isFinal: true }; // 無法解析，視為最終決定
+                if (views === null) return { shouldHide: false, isFinal: true };
 
-                return { shouldHide: views < CONFIG.LOW_VIEW_THRESHOLD, isFinal: true }; // 已成功解析，做出最終決定
+                return { shouldHide: views < CONFIG.LOW_VIEW_THRESHOLD, isFinal: true };
             }
         });
     }
@@ -85,17 +87,36 @@
 
     const formattedContainerSelector = CONFIG.TOP_LEVEL_CONTAINER_SELECTOR.replace(/\s/g, '');
 
-    const hideElementAndContainer = (element, ruleName, source = 'observer') => {
+    // ******** v9.2 核心改動：塌縮式隱藏 ********
+    const hideAndCollapseElement = (element, ruleName, source = 'observer') => {
         const topLevelContainer = element.closest(formattedContainerSelector);
         const elementToHide = topLevelContainer || element;
 
         if (elementToHide.hasAttribute(PROCESSED_MARKER_ATTR)) return;
+
+        // 標記為已隱藏
         elementToHide.setAttribute(PROCESSED_MARKER_ATTR, 'hidden');
 
-        elementToHide.style.display = 'none';
+        // 塌縮元素，使其不佔用任何空間
+        Object.assign(elementToHide.style, {
+            display: 'block', // 必須是 block 才能設定以下屬性
+            height: '0',
+            width: '0',
+            margin: '0',
+            padding: '0',
+            border: '0',
+            overflow: 'hidden',
+            visibility: 'hidden', // 確保內容完全不可見
+        });
 
         const logSource = source === 'periodic' ? '巡邏' : (source === 'initial' ? '初掃' : '即時');
         console.log(`%c[${SCRIPT_INFO.name}] 已隱藏 (${logSource}): "${ruleName}" (容器: <${elementToHide.tagName.toLowerCase()}>)`, 'color: #fd7e14;');
+    };
+
+    const markAsChecked = (element) => {
+        if (element && !element.hasAttribute(PROCESSED_MARKER_ATTR)) {
+            element.setAttribute(PROCESSED_MARKER_ATTR, 'checked');
+        }
     };
 
     const processNode = (node, source = 'observer') => {
@@ -108,11 +129,13 @@
             const signatureElements = node.matches(finalSelector) ? [node] : Array.from(node.querySelectorAll(finalSelector));
 
             for (const signatureEl of signatureElements) {
-                // v9.0 修正：只有在文字不匹配時才跳過，不進行任何標記
+                const container = signatureEl.closest(formattedContainerSelector) || signatureEl;
+                if (container.hasAttribute(PROCESSED_MARKER_ATTR)) continue;
+
                 if (rule.textKeyword && !rule.textKeyword.test(signatureEl.textContent?.trim() || '')) {
                     continue;
                 }
-                hideElementAndContainer(signatureEl, rule.name, source);
+                hideAndCollapseElement(signatureEl, rule.name, source);
             }
         }
 
@@ -121,14 +144,14 @@
             const targetElements = node.matches(finalSelector) ? [node] : Array.from(node.querySelectorAll(finalSelector));
 
             for (const targetEl of targetElements) {
+                if (targetEl.hasAttribute(PROCESSED_MARKER_ATTR)) continue;
+
                 const result = rule.condition(targetEl);
                 if (result.shouldHide) {
-                    hideElementAndContainer(targetEl, rule.name, source);
+                    hideAndCollapseElement(targetEl, rule.name, source);
                 } else if (result.isFinal) {
-                    // v9.0 修正: 只有當規則明確告知這是最終決定時，才標記為checked
-                    targetEl.setAttribute(PROCESSED_MARKER_ATTR, 'checked');
+                    markAsChecked(targetEl);
                 }
-                // 如果 isFinal 是 false，則不執行任何操作，留給下一次巡邏
             }
         }
     };
@@ -142,12 +165,22 @@
     });
 
     const run = () => {
-        console.log(`%c[${SCRIPT_INFO.name} v${SCRIPT_INFO.version}] 初始化完畢，終極巡邏系統已啟動。`, 'color: #17a2b8; font-weight: bold;');
+        console.log(`%c[${SCRIPT_INFO.name} v${SCRIPT_INFO.version}] 初始化完畢，過濾系統已啟動。`, 'color: #17a2b8; font-weight: bold;');
+
         processNode(document.body, 'initial');
         observer.observe(document.documentElement, { childList: true, subtree: true });
+
         if (CONFIG.ENABLE_PERIODIC_SCAN) {
-            setInterval(() => processNode(document.body, 'periodic'), CONFIG.PERIODIC_SCAN_INTERVAL);
-            console.log(`%c  - 定時巡邏已開啟 (每 ${CONFIG.PERIODIC_SCAN_INTERVAL / 1000} 秒)。`, 'color: #17a2b8;');
+            let patrolCounter = 0;
+            const patrolIntervalId = setInterval(() => {
+                processNode(document.body, 'periodic');
+                patrolCounter++;
+                if (patrolCounter >= CONFIG.MAX_PATROLS) {
+                    clearInterval(patrolIntervalId);
+                    console.log(`%c[${SCRIPT_INFO.name}] 初期巡邏任務完成，系統進入純即時監控模式。`, 'color: #28a745; font-style: italic;');
+                }
+            }, CONFIG.PERIODIC_SCAN_INTERVAL);
+            console.log(`%c  - 限時巡邏已開啟 (共執行 ${CONFIG.MAX_PATROLS} 次，覆蓋 ${CONFIG.PERIODIC_SCAN_INTERVAL * CONFIG.MAX_PATROLS / 1000} 秒)。`, 'color: #17a2b8;');
         }
     };
 

@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         YouTube 首頁淨化大師 (v8.9 - 崩潰修正版)
+// @name         YouTube 首頁淨化大師 (v9.0 - 最終穩定版)
 // @namespace    http://tampermonkey.net/
-// @version      8.9
-// @description  修正 v8.8 中因 dataset 命名規則錯誤導致的腳本崩潰問題。改用 setAttribute 進行標記，增強穩定性。
-// @author       Benny (v6.2) & Gemini (v8.0) & GPT-4 (v8.1-v8.9 Refinement)
+// @version      9.0
+// @description  終極架構優化：移除“已檢查(checked)”狀態，從根本上解決因內容延遲載入導致的偶發性過濾失效問題。現在，所有未被隱藏的元素都將被反覆巡邏，確保萬無一失。
+// @author       Benny (v6.2) & Gemini (v8.0) & GPT-4 (v8.1-v9.0 Refinement)
 // @match        https://www.youtube.com/*
 // @grant        GM_info
 // @run-at       document-start
@@ -39,8 +39,7 @@
         ],
     };
 
-    // v8.9 修正: 直接使用合法的 HTML data 屬性名
-    const PROCESSED_MARKER = 'data-yt-purifier-processed';
+    const PROCESSED_MARKER_ATTR = 'data-yt-purifier-processed';
 
     const parseViewCount = (text) => {
         if (!text) return null;
@@ -57,25 +56,24 @@
     if (CONFIG.ENABLE_LOW_VIEW_FILTER) {
         functionalRules.push({
             name: `低觀看數影片 (低於 ${CONFIG.LOW_VIEW_THRESHOLD})`,
-            // v8.9 修正: 使用標準的屬性選擇器
-            targetSelector: `
-                ytd-rich-item-renderer:not([${PROCESSED_MARKER}]), 
-                ytd-video-renderer:not([${PROCESSED_MARKER}]), 
-                ytd-compact-video-renderer:not([${PROCESSED_MARKER}])
-            `,
+            targetSelector: `ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer`,
             condition: (videoCard) => {
                 const visibleBadge = videoCard.querySelector('#channel-name ytd-badge-supported-renderer:not([hidden])');
-                if (visibleBadge) return false;
+                if (visibleBadge) return { shouldHide: false, isFinal: true }; // 豁免重要頻道，且決定是最終的
+
                 const metaSpans = videoCard.querySelectorAll('#metadata-line .inline-metadata-item');
                 let viewCountText = null;
                 metaSpans.forEach(span => {
                     const text = span.textContent || '';
                     if (text.includes('觀看') || text.toLowerCase().includes('view')) viewCountText = text;
                 });
-                if (!viewCountText) return false;
+
+                if (!viewCountText) return { shouldHide: false, isFinal: false }; // 觀看次數資訊還沒出來，不是最終決定
+
                 const views = parseViewCount(viewCountText);
-                if (views === null) return false;
-                return views < CONFIG.LOW_VIEW_THRESHOLD;
+                if (views === null) return { shouldHide: false, isFinal: true }; // 無法解析，視為最終決定
+
+                return { shouldHide: views < CONFIG.LOW_VIEW_THRESHOLD, isFinal: true }; // 已成功解析，做出最終決定
             }
         });
     }
@@ -90,11 +88,9 @@
     const hideElementAndContainer = (element, ruleName, source = 'observer') => {
         const topLevelContainer = element.closest(formattedContainerSelector);
         const elementToHide = topLevelContainer || element;
-        
-        // v8.9 修正: 使用 hasAttribute 檢查
-        if (elementToHide.hasAttribute(PROCESSED_MARKER)) return;
-        // v8.9 修正: 使用 setAttribute 標記
-        elementToHide.setAttribute(PROCESSED_MARKER, 'hidden');
+
+        if (elementToHide.hasAttribute(PROCESSED_MARKER_ATTR)) return;
+        elementToHide.setAttribute(PROCESSED_MARKER_ATTR, 'hidden');
 
         elementToHide.style.display = 'none';
 
@@ -105,21 +101,15 @@
     const processNode = (node, source = 'observer') => {
         if (node.nodeType !== Node.ELEMENT_NODE) return;
 
-        // v8.9 修正: 使用標準的屬性選擇器
-        const buildSelector = (selector) => `${selector}:not([${PROCESSED_MARKER}])`;
+        const selectorSuffix = `:not([${PROCESSED_MARKER_ATTR}])`;
 
         for (const rule of CONFIG.signatureRules) {
-            // 注意：這裡的查詢選擇器邏輯維持不變，因為 :not() 是給 querySelectorAll 使用的
-            const querySelector = `${rule.signatureSelector}:not([${PROCESSED_MARKER}])`;
-            const signatureElements = node.matches(querySelector) ? [node] : Array.from(node.querySelectorAll(querySelector));
-            
-            for (const signatureEl of signatureElements) {
-                const container = signatureEl.closest(formattedContainerSelector) || signatureEl;
-                // 再次檢查，因為 querySelectorAll 無法完全避免已處理的父元素下的新匹配
-                if (container.hasAttribute(PROCESSED_MARKER)) continue;
+            const finalSelector = `${rule.signatureSelector}${selectorSuffix}`;
+            const signatureElements = node.matches(finalSelector) ? [node] : Array.from(node.querySelectorAll(finalSelector));
 
+            for (const signatureEl of signatureElements) {
+                // v9.0 修正：只有在文字不匹配時才跳過，不進行任何標記
                 if (rule.textKeyword && !rule.textKeyword.test(signatureEl.textContent?.trim() || '')) {
-                    container.setAttribute(PROCESSED_MARKER, 'checked'); // 標記為已檢查但未隱藏
                     continue;
                 }
                 hideElementAndContainer(signatureEl, rule.name, source);
@@ -127,16 +117,18 @@
         }
 
         for (const rule of functionalRules) {
-            const targetElements = node.matches(rule.targetSelector) ? [node] : Array.from(node.querySelectorAll(rule.targetSelector));
-            for (const targetEl of targetElements) {
-                // 由於選擇器已經包含了 :not()，這裡的二次檢查是為了保險
-                if (targetEl.hasAttribute(PROCESSED_MARKER)) continue;
+            const finalSelector = `${rule.targetSelector}${selectorSuffix}`;
+            const targetElements = node.matches(finalSelector) ? [node] : Array.from(node.querySelectorAll(finalSelector));
 
-                if (rule.condition(targetEl)) {
+            for (const targetEl of targetElements) {
+                const result = rule.condition(targetEl);
+                if (result.shouldHide) {
                     hideElementAndContainer(targetEl, rule.name, source);
-                } else {
-                    targetEl.setAttribute(PROCESSED_MARKER, 'checked');
+                } else if (result.isFinal) {
+                    // v9.0 修正: 只有當規則明確告知這是最終決定時，才標記為checked
+                    targetEl.setAttribute(PROCESSED_MARKER_ATTR, 'checked');
                 }
+                // 如果 isFinal 是 false，則不執行任何操作，留給下一次巡邏
             }
         }
     };
@@ -150,7 +142,7 @@
     });
 
     const run = () => {
-        console.log(`%c[${SCRIPT_INFO.name} v${SCRIPT_INFO.version}] 初始化完畢，智慧巡邏系統已啟動。`, 'color: #17a2b8; font-weight: bold;');
+        console.log(`%c[${SCRIPT_INFO.name} v${SCRIPT_INFO.version}] 初始化完畢，終極巡邏系統已啟動。`, 'color: #17a2b8; font-weight: bold;');
         processNode(document.body, 'initial');
         observer.observe(document.documentElement, { childList: true, subtree: true });
         if (CONFIG.ENABLE_PERIODIC_SCAN) {

@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         YouTube 首頁淨化大師 (v10.2-beta - 全頁重掃實驗版)
+// @name         YouTube 首頁淨化大師 (v10.9 - 優先級可控版)
 // @namespace    http://tampermonkey.net/
-// @version      10.2-beta
-// @description  【實驗性版本，可能導致效能問題】此版本將週期性掃描改為重新掃描所有頁面元素，而非僅處理新元素。
-// @author       Benny, Gemini, Claude-3 & GPT-4 (v8.1-v10.2)
+// @version      10.9
+// @description  v10.9: 新增「總是過濾低觀看數內容」開關，可自由設定過濾優先級；大幅強化對播放清單與合輯的識別，過濾更穩定。
+// @author       Benny, Gemini, Claude-3 & GPT-4 (v8.1-v10.9)
 // @match        https://www.youtube.com/*
 // @grant        GM_info
 // @run-at       document-start
@@ -14,195 +14,129 @@
 (function () {
     'use strict';
 
-    // --- 設定區 (Configuration Area) ---
+    // --- 設定區 ---
     const CONFIG = {
         DEBUG_MODE: false,
         ENABLE_LOW_VIEW_FILTER: true,
         LOW_VIEW_THRESHOLD: 1000,
+        // v10.9 新增：設為 true，則「低觀看數過濾」優先於「認證頻道豁免」。
+        // 設為 false，則恢復舊版行為，認證頻道永遠不會因低觀看數被過濾。
+        ALWAYS_FILTER_LOW_VIEWS: true,
         ENABLE_PERIODIC_SCAN: true,
         PERIODIC_SCAN_INTERVAL: 750,
         MAX_PATROLS: 20,
-        TOP_LEVEL_CONTAINER_SELECTOR: `
-            ytd-rich-item-renderer, ytd-rich-section-renderer, ytd-video-renderer,
-            ytd-compact-video-renderer, ytd-reel-shelf-renderer, ytd-ad-slot-renderer,
-            ytd-statement-banner-renderer, ytd-promoted-sparkles-text-search-renderer
-        `,
     };
 
-    // --- 腳本核心 (Script Core) ---
-
+    // --- 選擇器與腳本資訊 ---
     const PROCESSED_ATTR = 'data-yt-purifier-processed';
-    const SCRIPT_INFO = (() => {
-        try { return { version: GM_info.script.version, name: GM_info.script.name }; }
-        catch (e) { return { version: '10.2-beta', name: 'YouTube Purifier' }; }
-    })();
+    const SELECTORS = {
+        TOP_LEVEL_CONTAINERS: ['ytd-rich-item-renderer', 'ytd-rich-section-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer', 'ytd-reel-shelf-renderer', 'ytd-ad-slot-renderer', 'ytd-statement-banner-renderer', 'ytd-promoted-sparkles-text-search-renderer'],
+        init() { this.ALL = this.TOP_LEVEL_CONTAINERS.join(', '); this.UNPROCESSED = this.TOP_LEVEL_CONTAINERS.map(s => `${s}:not([${PROCESSED_ATTR}])`).join(', '); return this; }
+    }.init();
+    const SCRIPT_INFO = (() => { try { return { version: GM_info.script.version, name: GM_info.script.name }; } catch (e) { return { version: '10.9', name: 'YouTube Purifier' }; } })();
+    const logger = (() => { let h = 0; return { info: (m) => console.log(`%c[${SCRIPT_INFO.name}] ${m}`, 'color:#17a2b8;font-weight:bold;'), success: (m) => console.log(`%c[${SCRIPT_INFO.name}] ${m}`, 'color:#28a745;font-style:italic;'), hide: (s, r, c) => { h++; console.log(`%c[${SCRIPT_INFO.name}] 已隱藏 (${s}): "${r}" (${c.tagName.toLowerCase()})`, 'color:#fd7e14;'); }, getStats: () => ({ hidden: h }) }; })();
+    const utils = { debounce: (f, d) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), d); }; }, parseLiveViewers: (t) => { const m = t?.match(/([\d,.]+)\s*(人正在觀看|watching)/); return m?.[1] ? Math.floor(parseFloat(m[1].replace(/,/g, '')) || 0) : null; } };
+    const parseViewCount = (() => { const r = /觀看次數：|次|,|views/gi, m = new Map([['萬', 1e4],['万', 1e4],['k', 1e3],['m', 1e6],['b', 1e9]]); return t => { if (!t) return null; const c = t.toLowerCase().replace(r, '').trim(), n = parseFloat(c); if (isNaN(n)) return null; for (const [s, x] of m) if (c.includes(s)) return Math.floor(n * x); return Math.floor(n); }; })();
 
-    const logger = {
-        log: (message) => CONFIG.DEBUG_MODE && console.log(`[${SCRIPT_INFO.name}] ${message}`),
-        info: (message) => console.log(`%c[${SCRIPT_INFO.name}] ${message}`, 'color: #17a2b8; font-weight: bold;'),
-        success: (message) => console.log(`%c[${SCRIPT_INFO.name}] ${message}`, 'color: #28a745; font-style: italic;'),
-        hide: (source, rule, container) => console.log(`%c[${SCRIPT_INFO.name}] 已隱藏 (${source}): "${rule}" (容器: <${container.tagName.toLowerCase()}>)`, 'color: #fd7e14;'),
-        exempt: (rule, container) => CONFIG.DEBUG_MODE && console.log(`[${SCRIPT_INFO.name}] 豁免: "${rule}" (容器: <${container.tagName.toLowerCase()}>)`)
-    };
-
-    const parseViewCount = (text) => {
-        if (!text) return null;
-        const cleanedText = text.toLowerCase().replace(/觀看次數：|次|,|views/g, '').trim();
-        const num = parseFloat(cleanedText);
-        if (isNaN(num)) return null;
-        if (cleanedText.includes('萬') || cleanedText.includes('万')) return Math.floor(num * 10000);
-        if (cleanedText.includes('k')) return Math.floor(num * 1000);
-        if (cleanedText.includes('m')) return Math.floor(num * 1000000);
-        return Math.floor(num);
-    };
-
+    // --- 規則系統 (v10.9 更新) ---
     const RULES = {
         MUST_HIDE: [
             { name: '各類廣告/促銷', selector: 'ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-premium-promo-renderer, ytd-in-feed-ad-layout-renderer, ytd-display-ad-renderer, .ytp-ad-text, [aria-label*="廣告"], [aria-label*="Sponsor"]' },
             { name: '會員專屬內容', selector: '.badge-style-type-members-only, [aria-label*="會員專屬"], [aria-label*="Members only"]' },
-            { name: '頂部橫幅(聲明/資訊)', selector: 'ytd-statement-banner-renderer' },
+            { name: '頂部橫幅', selector: 'ytd-statement-banner-renderer' },
             { name: '單一 Shorts 影片', selector: 'a#thumbnail[href*="/shorts/"]' },
             { name: 'Shorts 區塊', selector: '#title', textKeyword: /^Shorts$/i, scope: 'ytd-rich-shelf-renderer, ytd-reel-shelf-renderer, ytd-rich-section-renderer' },
             { name: '新聞快報區塊', selector: '#title', textKeyword: /新聞快報|Breaking news/i, scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer' },
             { name: '最新貼文區塊', selector: '#title', textKeyword: /最新( YouTube )?貼文|Latest (community )?posts/i, scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer' },
-            { name: '音樂合輯/播放清單區塊', selector: '#title', textKeyword: /合輯|Mixes|Playlist/i, scope: 'ytd-rich-item-renderer, ytd-rich-section-renderer, ytd-rich-shelf-renderer' },
             { name: '頻道推薦區塊', selector: '#title', textKeyword: /推薦頻道|Channels for you|Similar channels/i, scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer' },
+            // v10.9 強化：拆分為兩條規則，更穩定
+            { name: '播放清單/合輯 (關鍵字)', selector: '#title, .yt-lockup-metadata-view-model-wiz__title, .badge-shape-wiz__text', textKeyword: /合輯|Mixes|Playlist|部影片|videos/i, scope: 'ytd-rich-item-renderer, ytd-rich-section-renderer, ytd-rich-shelf-renderer' },
+            { name: '播放清單/合輯 (連結屬性)', selector: 'a.yt-simple-endpoint[href*="&list="], a.yt-lockup-view-model-wiz__title[href*="&list="]', scope: 'ytd-rich-item-renderer, ytd-rich-section-renderer, ytd-rich-shelf-renderer' },
         ],
         MUST_KEEP: [
-            {
-                name: '豁免：認證頻道',
-                selector: '#channel-name ytd-badge-supported-renderer:not([hidden])',
-                scope: 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer'
-            },
+            { name: '豁免：認證頻道', selector: '#channel-name ytd-badge-supported-renderer:not([hidden])', scope: 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer' },
         ],
         CONDITIONAL_HIDE: CONFIG.ENABLE_LOW_VIEW_FILTER ? [
-            {
-                name: `低觀看數影片 (< ${CONFIG.LOW_VIEW_THRESHOLD})`,
-                scope: `ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer`,
-                check: (container) => {
-                    let viewCountText = null;
-                    for (const span of container.querySelectorAll('#metadata-line .inline-metadata-item')) {
-                        const text = span.textContent || '';
-                        if (text.includes('觀看') || text.toLowerCase().includes('view')) {
-                            viewCountText = text; break;
-                        }
-                    }
-                    if (!viewCountText) return { hide: false, final: false };
-                    const views = parseViewCount(viewCountText);
-                    if (views === null) return { hide: false, final: true };
-                    return { hide: views < CONFIG.LOW_VIEW_THRESHOLD, final: true };
-                }
-            }
+            { name: `低觀眾數直播`, scope: 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer', check: c => { for (const i of c.querySelectorAll('#metadata-line .inline-metadata-item')) { const t=i.textContent?.trim(); if (t && (t.includes('人正在觀看')||t.toLowerCase().includes('watching'))) { const v = utils.parseLiveViewers(t); return v === null ? {h:0,f:1} : {h:v<CONFIG.LOW_VIEW_THRESHOLD, f:1}; } } return {h:0,f:0}; } },
+            { name: `低觀看數影片`, scope: 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer', check: c => { for (const i of c.querySelectorAll('#metadata-line .inline-metadata-item')) { const t=i.textContent?.trim(); if (t && (t.includes('觀看')||t.toLowerCase().includes('view'))) { const v = parseViewCount(t); return v === null ? {h:0,f:1} : {h:v<CONFIG.LOW_VIEW_THRESHOLD, f:1}; } } return {h:0,f:0}; } },
         ] : [],
     };
 
-    const hideElement = (element, ruleName, source) => {
-        // 【注意】這裡的檢查依然保留，是為了避免在控制台重複輸出已隱藏的日誌
-        if (element.getAttribute(PROCESSED_ATTR) === 'hidden') return;
-        element.style.display = 'none';
-        element.setAttribute(PROCESSED_ATTR, 'hidden');
-        logger.hide(source, ruleName, element);
-    };
+    // --- 元素處理 ---
+    const hideElement = (element, ruleName, source) => { if (element.getAttribute(PROCESSED_ATTR) === 'hidden') return; element.style.setProperty('display', 'none', 'important'); element.setAttribute(PROCESSED_ATTR, 'hidden'); logger.hide(source, ruleName, element); };
+    const markAsChecked = (element) => { if (element.hasAttribute(PROCESSED_ATTR)) return; element.setAttribute(PROCESSED_ATTR, 'checked'); };
 
-    const markAsChecked = (element) => {
-        if (element.getAttribute(PROCESSED_ATTR) === 'checked') return;
-        element.setAttribute(PROCESSED_ATTR, 'checked');
-    };
-
+    // --- 核心容器處理邏輯 (v10.9 採用可控優先級) ---
     const processContainer = (container, source) => {
-        // 【v10.2 變更】移除此處的 return，強制重新處理所有元素
-        // if (container.hasAttribute(PROCESSED_ATTR)) return;
-
-        // --- 第一級審查 (MUST_HIDE) ---
-        for (const rule of RULES.MUST_HIDE) {
-            if (rule.scope && !container.matches(rule.scope)) continue;
-            const element = container.matches(rule.selector) ? container : container.querySelector(rule.selector);
-            if (element && (!rule.textKeyword || rule.textKeyword.test(element.textContent?.trim() ?? ''))) {
-                hideElement(container, rule.name, source);
-                return;
+        if (container.hasAttribute(PROCESSED_ATTR)) return;
+        try {
+            for (const rule of RULES.MUST_HIDE) {
+                if (rule.scope && !container.matches(rule.scope)) continue;
+                const element = container.querySelector(rule.selector);
+                if (element && (!rule.textKeyword || rule.textKeyword.test(element.textContent?.trim() ?? ''))) { hideElement(container, rule.name, source); return; }
             }
-        }
 
-        // --- 第二級審查 (MUST_KEEP) ---
-        for (const rule of RULES.MUST_KEEP) {
-            if (rule.scope && !container.matches(rule.scope)) continue;
-            if (container.querySelector(rule.selector)) {
-                markAsChecked(container);
-                logger.exempt(rule.name, container);
-                return;
+            // --- 優先級控制點 ---
+            // 如果啟用「總是過濾低觀看數」，則先執行條件檢查
+            if (CONFIG.ALWAYS_FILTER_LOW_VIEWS) {
+                for (const rule of RULES.CONDITIONAL_HIDE) {
+                    if (rule.scope && !container.matches(rule.scope)) continue;
+                    const result = rule.check(container);
+                    if (result.h) { hideElement(container, rule.name, source); return; }
+                    if (result.f) { markAsChecked(container); return; } // 已檢查且觀看數達標，直接保留
+                }
             }
-        }
 
-        // --- 第三級審查 (CONDITIONAL_HIDE) ---
-        let isFinalDecisionMade = false;
-        for (const rule of RULES.CONDITIONAL_HIDE) {
-            if (rule.scope && !container.matches(rule.scope)) continue;
-            const result = rule.check(container);
-            if (result.hide) {
-                hideElement(container, rule.name, source);
-                return;
+            // 執行豁免檢查
+            for (const rule of RULES.MUST_KEEP) {
+                if (rule.scope && !container.matches(rule.scope)) continue;
+                if (container.querySelector(rule.selector)) { markAsChecked(container); return; }
             }
-            if (result.final) {
-                isFinalDecisionMade = true;
-                break;
-            }
-        }
 
-        if (isFinalDecisionMade || RULES.CONDITIONAL_HIDE.length === 0) {
+            // 如果未啟用「總是過濾低觀看數」，則在這裡執行條件檢查
+            if (!CONFIG.ALWAYS_FILTER_LOW_VIEWS) {
+                 for (const rule of RULES.CONDITIONAL_HIDE) {
+                    if (rule.scope && !container.matches(rule.scope)) continue;
+                    const result = rule.check(container);
+                    if (result.h) { hideElement(container, rule.name, source); return; }
+                    if (result.f) { markAsChecked(container); return; }
+                }
+            }
+        } catch (error) {
             markAsChecked(container);
         }
     };
 
-    const scanPage = (source = 'scan') => {
-        // 【v10.2 變更】移除選擇器中的 :not([${PROCESSED_ATTR}])，使其掃描所有元素
-        const elementsToProcess = document.querySelectorAll(CONFIG.TOP_LEVEL_CONTAINER_SELECTOR);
-        if (elementsToProcess.length > 0) {
-            for (const element of elementsToProcess) {
-                processContainer(element, source);
-            }
+    // --- 頁面掃描與監控 ---
+    const scanPage = (source = 'scan') => { document.querySelectorAll(SELECTORS.UNPROCESSED).forEach(e => processContainer(e, source)); };
+    const observer = new MutationObserver(utils.debounce(mutations => {
+        const elements = new Set();
+        for (const m of mutations) for (const n of m.addedNodes) if (n.nodeType === 1) {
+            if (n.matches?.(SELECTORS.ALL)) elements.add(n);
+            n.querySelectorAll?.(SELECTORS.ALL).forEach(c => elements.add(c));
         }
-    };
+        elements.forEach(e => processContainer(e, 'observer'));
+    }, CONFIG.DEBOUNCE_DELAY));
 
-    const observer = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            for (const addedNode of mutation.addedNodes) {
-                if (addedNode.nodeType === Node.ELEMENT_NODE) {
-                    if (addedNode.matches(CONFIG.TOP_LEVEL_CONTAINER_SELECTOR)) {
-                        processContainer(addedNode, 'observer');
-                    }
-                    const containers = addedNode.querySelectorAll(CONFIG.TOP_LEVEL_CONTAINER_SELECTOR);
-                    for (const container of containers) {
-                       processContainer(container, 'observer');
-                    }
-                }
-            }
-        }
-    });
-
+    // --- 主要執行邏輯 ---
     const run = () => {
         logger.info(`v${SCRIPT_INFO.version} 初始化完畢，過濾系統已啟動。`);
-
         scanPage('initial');
         observer.observe(document.documentElement, { childList: true, subtree: true });
-
         if (CONFIG.ENABLE_PERIODIC_SCAN) {
-            let patrolCounter = 0;
-            const patrolIntervalId = setInterval(() => {
-                patrolCounter++;
-                if (patrolCounter > CONFIG.MAX_PATROLS) {
-                    clearInterval(patrolIntervalId);
-                    logger.success(`初期巡邏任務完成，系統進入純即時監控模式。`);
+            let patrols = 0;
+            const intervalId = setInterval(() => {
+                if (++patrols > CONFIG.MAX_PATROLS) {
+                    clearInterval(intervalId);
+                    logger.success(`初期巡邏任務完成。統計: ${logger.getStats().hidden} 個項目被隱藏。`);
                     return;
                 }
-                scanPage(`periodic-rescan-${patrolCounter}`);
+                scanPage(`periodic-${patrols}`);
             }, CONFIG.PERIODIC_SCAN_INTERVAL);
-            logger.info(`限時巡邏已開啟 (共執行 ${CONFIG.MAX_PATROLS} 次)。`);
         }
     };
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', run, { once: true });
-    } else {
-        run();
-    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once: true });
+    else run();
+    window.addEventListener('beforeunload', () => observer.disconnect());
 })();

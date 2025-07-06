@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         YouTube 首頁淨化大師 (v10.9 - 優先級可控版)
+// @name         YouTube 首頁淨化大師 (v10.10 - 持續監控版)
 // @namespace    http://tampermonkey.net/
-// @version      10.9
-// @description  v10.9: 新增「總是過濾低觀看數內容」開關，可自由設定過濾優先級；大幅強化對播放清單與合輯的識別，過濾更穩定。
-// @author       Benny, Gemini, Claude-3 & GPT-4 (v8.1-v10.9)
+// @version      10.10
+// @description  v10.10: 移除巡邏次數限制，腳本將持續在背景進行週期性掃描，以應對極端延遲載入或複雜的頁面互動，確保過濾的最高可靠性。
+// @author       Benny, Gemini, Claude-3 & GPT-4 (v8.1-v10.10)
 // @match        https://www.youtube.com/*
 // @grant        GM_info
 // @run-at       document-start
@@ -19,12 +19,10 @@
         DEBUG_MODE: false,
         ENABLE_LOW_VIEW_FILTER: true,
         LOW_VIEW_THRESHOLD: 1000,
-        // v10.9 新增：設為 true，則「低觀看數過濾」優先於「認證頻道豁免」。
-        // 設為 false，則恢復舊版行為，認證頻道永遠不會因低觀看數被過濾。
         ALWAYS_FILTER_LOW_VIEWS: true,
         ENABLE_PERIODIC_SCAN: true,
-        PERIODIC_SCAN_INTERVAL: 750,
-        MAX_PATROLS: 20,
+        PERIODIC_SCAN_INTERVAL: 1000, // 考慮到持續運行，稍微增加間隔以降低長期負載
+        DEBOUNCE_DELAY: 50,
     };
 
     // --- 選擇器與腳本資訊 ---
@@ -33,12 +31,12 @@
         TOP_LEVEL_CONTAINERS: ['ytd-rich-item-renderer', 'ytd-rich-section-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer', 'ytd-reel-shelf-renderer', 'ytd-ad-slot-renderer', 'ytd-statement-banner-renderer', 'ytd-promoted-sparkles-text-search-renderer'],
         init() { this.ALL = this.TOP_LEVEL_CONTAINERS.join(', '); this.UNPROCESSED = this.TOP_LEVEL_CONTAINERS.map(s => `${s}:not([${PROCESSED_ATTR}])`).join(', '); return this; }
     }.init();
-    const SCRIPT_INFO = (() => { try { return { version: GM_info.script.version, name: GM_info.script.name }; } catch (e) { return { version: '10.9', name: 'YouTube Purifier' }; } })();
+    const SCRIPT_INFO = (() => { try { return { version: GM_info.script.version, name: GM_info.script.name }; } catch (e) { return { version: '10.10', name: 'YouTube Purifier' }; } })();
     const logger = (() => { let h = 0; return { info: (m) => console.log(`%c[${SCRIPT_INFO.name}] ${m}`, 'color:#17a2b8;font-weight:bold;'), success: (m) => console.log(`%c[${SCRIPT_INFO.name}] ${m}`, 'color:#28a745;font-style:italic;'), hide: (s, r, c) => { h++; console.log(`%c[${SCRIPT_INFO.name}] 已隱藏 (${s}): "${r}" (${c.tagName.toLowerCase()})`, 'color:#fd7e14;'); }, getStats: () => ({ hidden: h }) }; })();
     const utils = { debounce: (f, d) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => f(...a), d); }; }, parseLiveViewers: (t) => { const m = t?.match(/([\d,.]+)\s*(人正在觀看|watching)/); return m?.[1] ? Math.floor(parseFloat(m[1].replace(/,/g, '')) || 0) : null; } };
     const parseViewCount = (() => { const r = /觀看次數：|次|,|views/gi, m = new Map([['萬', 1e4],['万', 1e4],['k', 1e3],['m', 1e6],['b', 1e9]]); return t => { if (!t) return null; const c = t.toLowerCase().replace(r, '').trim(), n = parseFloat(c); if (isNaN(n)) return null; for (const [s, x] of m) if (c.includes(s)) return Math.floor(n * x); return Math.floor(n); }; })();
 
-    // --- 規則系統 (v10.9 更新) ---
+    // --- 規則系統 ---
     const RULES = {
         MUST_HIDE: [
             { name: '各類廣告/促銷', selector: 'ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-premium-promo-renderer, ytd-in-feed-ad-layout-renderer, ytd-display-ad-renderer, .ytp-ad-text, [aria-label*="廣告"], [aria-label*="Sponsor"]' },
@@ -49,7 +47,6 @@
             { name: '新聞快報區塊', selector: '#title', textKeyword: /新聞快報|Breaking news/i, scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer' },
             { name: '最新貼文區塊', selector: '#title', textKeyword: /最新( YouTube )?貼文|Latest (community )?posts/i, scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer' },
             { name: '頻道推薦區塊', selector: '#title', textKeyword: /推薦頻道|Channels for you|Similar channels/i, scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer' },
-            // v10.9 強化：拆分為兩條規則，更穩定
             { name: '播放清單/合輯 (關鍵字)', selector: '#title, .yt-lockup-metadata-view-model-wiz__title, .badge-shape-wiz__text', textKeyword: /合輯|Mixes|Playlist|部影片|videos/i, scope: 'ytd-rich-item-renderer, ytd-rich-section-renderer, ytd-rich-shelf-renderer' },
             { name: '播放清單/合輯 (連結屬性)', selector: 'a.yt-simple-endpoint[href*="&list="], a.yt-lockup-view-model-wiz__title[href*="&list="]', scope: 'ytd-rich-item-renderer, ytd-rich-section-renderer, ytd-rich-shelf-renderer' },
         ],
@@ -66,7 +63,7 @@
     const hideElement = (element, ruleName, source) => { if (element.getAttribute(PROCESSED_ATTR) === 'hidden') return; element.style.setProperty('display', 'none', 'important'); element.setAttribute(PROCESSED_ATTR, 'hidden'); logger.hide(source, ruleName, element); };
     const markAsChecked = (element) => { if (element.hasAttribute(PROCESSED_ATTR)) return; element.setAttribute(PROCESSED_ATTR, 'checked'); };
 
-    // --- 核心容器處理邏輯 (v10.9 採用可控優先級) ---
+    // --- 核心容器處理邏輯 ---
     const processContainer = (container, source) => {
         if (container.hasAttribute(PROCESSED_ATTR)) return;
         try {
@@ -75,25 +72,18 @@
                 const element = container.querySelector(rule.selector);
                 if (element && (!rule.textKeyword || rule.textKeyword.test(element.textContent?.trim() ?? ''))) { hideElement(container, rule.name, source); return; }
             }
-
-            // --- 優先級控制點 ---
-            // 如果啟用「總是過濾低觀看數」，則先執行條件檢查
             if (CONFIG.ALWAYS_FILTER_LOW_VIEWS) {
                 for (const rule of RULES.CONDITIONAL_HIDE) {
                     if (rule.scope && !container.matches(rule.scope)) continue;
                     const result = rule.check(container);
                     if (result.h) { hideElement(container, rule.name, source); return; }
-                    if (result.f) { markAsChecked(container); return; } // 已檢查且觀看數達標，直接保留
+                    if (result.f) { markAsChecked(container); return; }
                 }
             }
-
-            // 執行豁免檢查
             for (const rule of RULES.MUST_KEEP) {
                 if (rule.scope && !container.matches(rule.scope)) continue;
                 if (container.querySelector(rule.selector)) { markAsChecked(container); return; }
             }
-
-            // 如果未啟用「總是過濾低觀看數」，則在這裡執行條件檢查
             if (!CONFIG.ALWAYS_FILTER_LOW_VIEWS) {
                  for (const rule of RULES.CONDITIONAL_HIDE) {
                     if (rule.scope && !container.matches(rule.scope)) continue;
@@ -102,11 +92,9 @@
                     if (result.f) { markAsChecked(container); return; }
                 }
             }
-        } catch (error) {
-            markAsChecked(container);
-        }
+        } catch (error) { markAsChecked(container); }
     };
-
+    
     // --- 頁面掃描與監控 ---
     const scanPage = (source = 'scan') => { document.querySelectorAll(SELECTORS.UNPROCESSED).forEach(e => processContainer(e, source)); };
     const observer = new MutationObserver(utils.debounce(mutations => {
@@ -118,24 +106,22 @@
         elements.forEach(e => processContainer(e, 'observer'));
     }, CONFIG.DEBOUNCE_DELAY));
 
-    // --- 主要執行邏輯 ---
+    // --- 主要執行邏輯 (v10.10 持續監控修改) ---
     const run = () => {
         logger.info(`v${SCRIPT_INFO.version} 初始化完畢，過濾系統已啟動。`);
         scanPage('initial');
         observer.observe(document.documentElement, { childList: true, subtree: true });
+
+        // v10.10 修改：移除巡邏次數限制，使其持續運行
         if (CONFIG.ENABLE_PERIODIC_SCAN) {
-            let patrols = 0;
-            const intervalId = setInterval(() => {
-                if (++patrols > CONFIG.MAX_PATROLS) {
-                    clearInterval(intervalId);
-                    logger.success(`初期巡邏任務完成。統計: ${logger.getStats().hidden} 個項目被隱藏。`);
-                    return;
-                }
-                scanPage(`periodic-${patrols}`);
+            setInterval(() => {
+                scanPage('periodic-continuous');
             }, CONFIG.PERIODIC_SCAN_INTERVAL);
+            
+            logger.success('持續性背景掃描已啟動。');
         }
     };
-
+    
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run, { once: true });
     else run();
     window.addEventListener('beforeunload', () => observer.disconnect());

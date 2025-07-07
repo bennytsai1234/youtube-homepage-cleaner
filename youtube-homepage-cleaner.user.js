@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         YouTube 首頁淨化大師 (v10.11 - 完整繁體中文化版)
+// @name         YouTube 首頁淨化大師 (v10.12 - 擴充播放清單過濾)
 // @namespace    http://tampermonkey.net/
-// @version      10.11
-// @description  v10.11: 改善首次載入時的過濾可靠性，增加多重初始化檢查和延遲掃描機制。
-// @author       Benny, Gemini, Claude-3 & GPT-4 (v8.1-v10.11)
+// @version      10.12
+// @description  v10.12: 新增對觀看頁面右側播放清單/Podcast 的過濾規則，提升過濾覆蓋範圍。
+// @author       Benny, Gemini, Claude-3 & GPT-4 (v8.1-v10.12)
 // @match        https://www.youtube.com/*
 // @grant        GM_info
 // @run-at       document-start
@@ -24,16 +24,21 @@
         PERIODIC_SCAN_INTERVAL: 1000,
         DEBOUNCE_DELAY: 50,
         // 新增：初始化相關設定
-        INITIAL_SCAN_DELAY: 500,      // 首次掃描延遲
-        INITIAL_SCAN_RETRIES: 5,      // 初始掃描重試次數
-        INITIAL_RETRY_INTERVAL: 1000, // 重試間隔
-        CONTENT_WAIT_TIMEOUT: 10000,  // 等待內容載入的最大時間
+        INITIAL_SCAN_DELAY: 50,
+        // 首次掃描延遲
+        INITIAL_SCAN_RETRIES: 5,
+        // 初始掃描重試次數
+        INITIAL_RETRY_INTERVAL: 100,
+        // 重試間隔
+        CONTENT_WAIT_TIMEOUT: 10000,
+        // 等待內容載入的最大時間
     };
 
     // --- 選擇器與腳本資訊 ---
     const PROCESSED_ATTR = 'data-yt-purifier-processed';
     const SELECTORS = {
-        TOP_LEVEL_CONTAINERS: ['ytd-rich-item-renderer', 'ytd-rich-section-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer', 'ytd-reel-shelf-renderer', 'ytd-ad-slot-renderer', 'ytd-statement-banner-renderer', 'ytd-promoted-sparkles-text-search-renderer'],
+        // 【修改 1】: 新增 'yt-lockup-view-model' 來識別右側播放清單容器
+        TOP_LEVEL_CONTAINERS: ['ytd-rich-item-renderer', 'ytd-rich-section-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer', 'ytd-reel-shelf-renderer', 'ytd-ad-slot-renderer', 'ytd-statement-banner-renderer', 'ytd-promoted-sparkles-text-search-renderer', 'yt-lockup-view-model'],
         // 新增：用於偵測頁面是否已載入主要內容的選擇器
         CONTENT_INDICATORS: ['ytd-rich-grid-renderer', 'ytd-two-column-browse-results-renderer', '#contents'],
         init() {
@@ -46,9 +51,10 @@
 
     const SCRIPT_INFO = (() => {
         try {
-            return { version: GM_info.script.version, name: GM_info.script.name };
+            // 版本號更新為 10.12
+            return { version: '10.12', name: GM_info.script.name };
         } catch (e) {
-            return { version: '10.11', name: 'YouTube Purifier' };
+            return { version: '10.12', name: 'YouTube Purifier' };
         }
     })();
 
@@ -124,8 +130,10 @@
             { name: '新聞快報區塊', selector: '#title', textKeyword: /新聞快報|Breaking news/i, scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer' },
             { name: '最新貼文區塊', selector: '#title', textKeyword: /最新( YouTube )?貼文|Latest (community )?posts/i, scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer' },
             { name: '頻道推薦區塊', selector: '#title', textKeyword: /推薦頻道|Channels for you|Similar channels/i, scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer' },
-            { name: '播放清單/合輯 (關鍵字)', selector: '#title, .yt-lockup-metadata-view-model-wiz__title, .badge-shape-wiz__text', textKeyword: /合輯|Mixes|Playlist|部影片|videos/i, scope: 'ytd-rich-item-renderer, ytd-rich-section-renderer, ytd-rich-shelf-renderer' },
-            { name: '播放清單/合輯 (連結屬性)', selector: 'a.yt-simple-endpoint[href*="&list="], a.yt-lockup-view-model-wiz__title[href*="&list="]', scope: 'ytd-rich-item-renderer, ytd-rich-section-renderer, ytd-rich-shelf-renderer' },
+            // 【修改 2】: 擴充播放清單關鍵字 (新增 Podcast|集) 和作用範圍 (新增 yt-lockup-view-model)
+            { name: '播放清單/合輯 (關鍵字)', selector: '#title, .yt-lockup-metadata-view-model-wiz__title, .badge-shape-wiz__text', textKeyword: /合輯|Mixes|Playlist|部影片|videos|Podcast|集/i, scope: 'ytd-rich-item-renderer, ytd-rich-section-renderer, ytd-rich-shelf-renderer, yt-lockup-view-model' },
+            // 【修改 3】: 擴充播放清單連結屬性規則的作用範圍 (新增 yt-lockup-view-model)
+            { name: '播放清單/合輯 (連結屬性)', selector: 'a.yt-simple-endpoint[href*="&list="], a.yt-lockup-view-model-wiz__title[href*="&list="]', scope: 'ytd-rich-item-renderer, ytd-rich-section-renderer, ytd-rich-shelf-renderer, yt-lockup-view-model' },
         ],
         MUST_KEEP: [
             { name: '豁免：認證頻道', selector: '#channel-name ytd-badge-supported-renderer:not([hidden])', scope: 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer' },
@@ -154,11 +162,15 @@
         if (container.hasAttribute(PROCESSED_ATTR)) return;
         try {
             for (const rule of RULES.MUST_HIDE) {
+                // 如果規則有 scope 限制，但當前容器不匹配，則跳過此規則
                 if (rule.scope && !container.matches(rule.scope)) continue;
-                const element = container.querySelector(rule.selector);
-                if (element && (!rule.textKeyword || rule.textKeyword.test(element.textContent?.trim() ?? ''))) {
-                    hideElement(container, rule.name, source);
-                    return;
+                // 在容器內尋找符合規則的子元素
+                const elements = container.querySelectorAll(rule.selector);
+                for (const element of elements) {
+                    if (element && (!rule.textKeyword || rule.textKeyword.test(element.textContent?.trim() ?? ''))) {
+                        hideElement(container, rule.name, source);
+                        return; // 隱藏後立即返回，不再處理此容器
+                    }
                 }
             }
             if (CONFIG.ALWAYS_FILTER_LOW_VIEWS) {
@@ -204,7 +216,10 @@
     // --- 頁面掃描與監控 ---
     const scanPage = (source = 'scan') => {
         const elements = document.querySelectorAll(SELECTORS.UNPROCESSED);
-        logger.info(`${source} 掃描發現 ${elements.length} 個未處理元素`);
+        // 只有在找到元素時才打印日誌，避免刷屏
+        if (elements.length > 0) {
+            logger.info(`${source} 掃描發現 ${elements.length} 個未處理元素`);
+        }
         elements.forEach(e => processContainer(e, source));
     };
 
@@ -235,6 +250,8 @@
                 logger.info(`重試掃描 ${i + 1}/${CONFIG.INITIAL_SCAN_RETRIES}，發現 ${unprocessedCount} 個新元素`);
                 scanPage(`retry-${i + 1}`);
             } else {
+                // 為了避免在快速導航時誤判，即使沒找到也稍微等待一下
+                if (i < 2) continue;
                 logger.success('初始化掃描完成，無需進一步重試');
                 break;
             }
@@ -251,7 +268,10 @@
                 }
             }
         }
-        elements.forEach(e => processContainer(e, 'observer'));
+        if (elements.size > 0) {
+            logger.info(`觀察器發現 ${elements.size} 個新頂層元素`);
+            elements.forEach(e => processContainer(e, 'observer'));
+        }
     }, CONFIG.DEBOUNCE_DELAY));
 
     // --- 主要執行邏輯 (v10.11 增強初始化版本) ---
@@ -277,10 +297,15 @@
 
     // --- 頁面載入事件處理 ---
     const startScript = () => {
+        if (window.ytPurifierInitialized) {
+            logger.warning('腳本已初始化，跳過重複執行。');
+            return;
+        }
+        window.ytPurifierInitialized = true;
+
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', run, { once: true });
         } else {
-            // 如果頁面已經載入，立即執行但稍作延遲
             setTimeout(run, 100);
         }
     };
@@ -288,27 +313,31 @@
     // 新增：監聽 YouTube 的頁面導覽事件
     const setupNavigationListener = () => {
         let lastUrl = location.href;
-        const checkNavigation = () => {
+        const observer = new MutationObserver(() => {
             if (location.href !== lastUrl) {
                 lastUrl = location.href;
-                logger.info('偵測到頁面導覽，重新初始化過濾');
-                // 頁面導覽時重新執行掃描
-                setTimeout(() => scanPage('navigation'), 500);
+                logger.info('偵測到頁面導覽，重新執行掃描');
+                // 在導覽後稍作延遲，等待新頁面內容渲染
+                setTimeout(() => performInitialScan(), 500);
             }
-        };
-
-        // 監聽歷史記錄變化
-        window.addEventListener('popstate', checkNavigation);
-
-        // 定期檢查 URL 變化（用於 SPA 導覽）
-        setInterval(checkNavigation, 1000);
+        });
+        // 觀察 body 的變化，因為 YouTube 的 SPA 導航會改變 body 的內容
+        observer.observe(document.body, { childList: true, subtree: true });
     };
 
     // 啟動腳本
     startScript();
-    setupNavigationListener();
-
+    
+    // 導覽監聽器在 body 存在後再設定
+    if (document.body) {
+        setupNavigationListener();
+    } else {
+        document.addEventListener('DOMContentLoaded', setupNavigationListener, { once: true });
+    }
+    
     // 清理工作
-    window.addEventListener('beforeunload', () => observer.disconnect());
+    window.addEventListener('beforeunload', () => {
+        if (observer) observer.disconnect();
+    });
 
 })();

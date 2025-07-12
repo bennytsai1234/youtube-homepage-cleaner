@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師 (Aegis 宙斯之盾)
 // @namespace    http://tampermonkey.net/
-// @version      13.4
-// @description  v13.4: 增強「即時配置更新」。現在切換過濾器（開/關）都會立即重新掃描當前頁面上的所有影片，無需刷新即可生效。修復了側邊欄過濾和相容性問題。
+// @version      13.6
+// @description  v13.6: 新增過濾規則以移除首頁的「YouTube Premium」推廣橫幅 (ytd-statement-banner-renderer)。
 // @author       Benny, AI Collaborators & Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -35,7 +35,7 @@
     const HIDDEN_REASON_ATTR = 'data-yt-aegis-hidden-reason';
 
     // 為了相容性，確保 GM_info 存在並使用相容寫法
-    const SCRIPT_INFO = (typeof GM_info !== 'undefined' && GM_info.script) ? GM_info.script : { name: 'YouTube Purifier Aegis', version: '13.4' };
+    const SCRIPT_INFO = (typeof GM_info !== 'undefined' && GM_info.script) ? GM_info.script : { name: 'YouTube Purifier Aegis', version: '13.6' };
 
     // 定義狀態常量
     const State = { HIDE: 'HIDE', KEEP: 'KEEP', WAIT: 'WAIT' };
@@ -51,6 +51,7 @@
         debounce: (func, delay) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => func(...a), delay); }; },
         injectCSS: () => {
              if (typeof GM_addStyle !== 'undefined') {
+                 // 雖然我們用規則引擎處理了 Premium Banner，但如果想用 CSS 處理可以在這裡加入 ytd-statement-banner-renderer
                  GM_addStyle('ytd-ad-slot-renderer, ytd-reel-shelf-renderer, ytd-promoted-sparkles-text-search-renderer { display: none !important; }');
              }
         },
@@ -100,6 +101,19 @@
                 { id: 'members_only', name: '會員專屬', conditions: { any: [{ type: 'selector', value: '[aria-label*="會員專屬"], [aria-label*="Members only"]' }] } },
                 { id: 'shorts_item', name: 'Shorts (單個)', conditions: { any: [{ type: 'selector', value: 'a#thumbnail[href*="/shorts/"]' }] } },
                 { id: 'playlist_link', name: '播放清單 (連結)', conditions: { any: [{ type: 'selector', value: 'a[href*="&list="]' }] } },
+
+                // 【新增 v13.6】隱藏 YouTube Premium 推廣橫幅
+                {
+                    id: 'premium_banner',
+                    name: 'Premium 推廣橫幅',
+                    scope: 'ytd-rich-section-renderer', // 針對外層容器
+                    conditions: {
+                        any: [
+                            { type: 'selector', value: 'ytd-statement-banner-renderer' } // 檢查內部是否包含橫幅組件
+                        ]
+                    }
+                },
+
                 {
                     id: 'news_block',
                     name: '新聞區塊 (雙重驗證)',
@@ -111,8 +125,9 @@
                         ]
                     }
                 },
-                { id: 'shorts_block', name: 'Shorts 區塊', scope: 'ytd-rich-shelf-renderer', conditions: { any: [{ type: 'text', selector: '#title', keyword: /^Shorts$/i }] } },
-                { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer', conditions: { any: [{ type: 'text', selector: '#title', keyword: /貼文|posts/i }] } },
+                // 【修復點 v13.5】將 ytd-rich-section-renderer 加入 scope，以處理首頁上的區塊結構
+                { id: 'shorts_block', name: 'Shorts 區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#title', keyword: /^Shorts$/i }] } },
+                { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#title', keyword: /貼文|posts/i }] } },
 
                 // 條件規則 (包含新組件 yt-lockup-view-model)
                 ...(SETTINGS.ENABLE_LOW_VIEW_FILTER ? [

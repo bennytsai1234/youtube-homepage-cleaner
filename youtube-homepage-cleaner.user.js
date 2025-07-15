@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         YouTube 淨化大師 (Elysian)
+// @name         YouTube 淨化大師 (Pantheon)
 // @namespace    http://tampermonkey.net/
-// @version      14.0
-// @description  v14.0: 最終修正。遵循最嚴格的程式碼規範，修正所有已知的 Linter 錯誤，達到品質與功能的真正終點。
+// @version      15.0
+// @description  v15.0: 最終修正。徹底修復了對「貼文區塊」等內容的範圍匹配錯誤，確保所有規則都能精準命中目標。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -27,9 +27,9 @@
     };
 
     const CONFIG = { DEBOUNCE_DELAY: 30, PERIODIC_INTERVAL: 250 };
-    const PROCESSED_ATTR = 'data-yt-elysian-processed';
-    const HIDDEN_REASON_ATTR = 'data-yt-elysian-hidden-reason';
-    const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Elysian', version: '14.0' };
+    const PROCESSED_ATTR = 'data-yt-pantheon-processed';
+    const HIDDEN_REASON_ATTR = 'data-yt-pantheon-hidden-reason';
+    const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '15.0' };
     const State = { HIDE: 'HIDE', KEEP: 'KEEP', WAIT: 'WAIT' };
 
     const SELECTORS = {
@@ -71,7 +71,7 @@
         prefix: `[${SCRIPT_INFO.name}]`,
         info: (msg, style = 'color:#3498db;') => SETTINGS.DEBUG_MODE && console.log(`%c${logger.prefix} [INFO] ${msg}`, style),
         hide: (source, ruleName, reason, element) => SETTINGS.DEBUG_MODE && console.log(`%c${logger.prefix} [HIDE] Rule:"${ruleName}" | Reason:${reason} | Src:[${source}]`, 'color:#e74c3c;', element),
-        logStart: () => console.log(`%c✨ ${logger.prefix} v${SCRIPT_INFO.version} "Elysian" 啟動.`, 'color:#16a085; font-weight:bold; font-size: 1.2em;'),
+        logStart: () => console.log(`%c🏛️ ${logger.prefix} v${SCRIPT_INFO.version} "Pantheon" 啟動.`, 'color:#7f8c8d; font-weight:bold; font-size: 1.2em;'),
     };
 
     // --- 統一規則引擎 ---
@@ -88,9 +88,10 @@
                 { id: 'shorts_item', name: 'Shorts (單個)', conditions: { any: [{ type: 'selector', value: 'a#thumbnail[href*="/shorts/"]' }] } },
                 { id: 'playlist_link', name: '播放清單 (連結)', conditions: { any: [{ type: 'selector', value: 'a[href*="&list="]' }] } },
                 { id: 'premium_banner', name: 'Premium 推廣', scope: 'ytd-statement-banner-renderer', conditions: { any: [{ type: 'selector', value: 'ytd-button-renderer' }] }},
-                { id: 'news_block', name: '新聞區塊', scope: 'ytd-rich-shelf-renderer', conditions: { any: [{ type: 'text', selector: '#title', keyword: /新聞快報|Breaking news/i }, { type: 'selector', value: 'yt-icon[icon^="yt-icons:explore_"]' }] }},
+                { id: 'news_block', name: '新聞區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#title', keyword: /新聞快報|Breaking news/i }, { type: 'selector', value: 'yt-icon[icon^="yt-icons:explore_"]' }] }},
                 { id: 'shorts_block', name: 'Shorts 區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#title', keyword: /^Shorts$/i }] } },
-                { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer', conditions: { any: [{ type: 'text', selector: '#title', keyword: /貼文|posts/i }] } },
+                // 【最終修正】修正 scope，確保能匹配外層的 ytd-rich-section-renderer
+                { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#title', keyword: /貼文|posts/i }] } },
                 ...(SETTINGS.ENABLE_LOW_VIEW_FILTER ? [
                     { id: 'low_viewer_live', name: '低觀眾直播', isConditional: true, scope: 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model', conditions: { any: [{ type: 'liveViewers', threshold: SETTINGS.LOW_VIEW_THRESHOLD }] }},
                     { id: 'low_view_video', name: '低觀看影片', isConditional: true, scope: 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model', conditions: { any: [{ type: 'viewCount', threshold: SETTINGS.LOW_VIEW_THRESHOLD }] }}
@@ -106,16 +107,15 @@
                 } else { this.globalRules.push(rule); }
             });
         },
-
+        
         checkCondition(container, condition) {
             try {
                 switch (condition.type) {
-                    case 'selector':
+                    case 'selector': {
                         return container.querySelector(condition.value)
                             ? { state: State.HIDE, reason: `Selector: ${condition.value}` }
                             : { state: State.KEEP };
-
-                    // 【最終修正】為 case 區塊添加大括號 {}，創建獨立的塊級作用域，以符合 no-case-declarations 規則。
+                    }
                     case 'text': {
                         const el = container.querySelector(condition.selector);
                         const text = el?.textContent?.trim() ?? '';
@@ -123,11 +123,9 @@
                             ? { state: State.HIDE, reason: `Text: "${text}"` }
                             : { state: State.KEEP };
                     }
-
                     case 'liveViewers':
                     case 'viewCount':
                         return this.checkNumericMetadata(container, condition);
-
                     default:
                         return { state: State.KEEP };
                 }
@@ -142,7 +140,6 @@
             const keyword = isLive ? 'watching' : 'view';
             const keywordZh = isLive ? '人正在觀看' : '觀看';
             const metadataSelector = '#metadata-line .inline-metadata-item, .yt-content-metadata-view-model-wiz__metadata-text';
-
             for (const item of container.querySelectorAll(metadataSelector)) {
                 const textContent = item.textContent?.trim();
                 if (!textContent) continue;
@@ -156,7 +153,7 @@
             }
             return { state: State.WAIT };
         },
-
+        
         checkRule(container, rule) {
             if (rule.scope && !container.matches(rule.scope)) return { state: State.KEEP };
             if (rule.conditions.any) {
@@ -170,13 +167,12 @@
             }
             return { state: State.KEEP };
         },
-
+        
         processContainer(container, source) {
             if (container.hasAttribute(PROCESSED_ATTR)) return;
             const tagName = container.tagName.toLowerCase();
             const relevantRules = (this.ruleCache.get(tagName) || []).concat(this.globalRules);
             let finalState = State.KEEP;
-
             for (const rule of relevantRules) {
                 const result = this.checkRule(container, rule);
                 if (result.state === State.HIDE) {
@@ -196,7 +192,7 @@
     const Main = {
         menuIds: [],
         scanPage: (source) => document.querySelectorAll(SELECTORS.UNPROCESSED).forEach(el => RuleEngine.processContainer(el, source)),
-
+        
         toggleSetting(key, options) {
             SETTINGS[key] = !SETTINGS[key];
             GM_setValue(key, SETTINGS[key]);
@@ -207,7 +203,7 @@
             this.scanPage('real-time-update');
             this.setupMenu();
         },
-
+        
         setupMenu() {
             if (typeof GM_unregisterMenuCommand !== 'undefined') {
                 this.menuIds.forEach(id => { try { GM_unregisterMenuCommand(id); } catch (e) {} });
@@ -235,9 +231,8 @@
         },
 
         init() {
-            if (window.ytElysianInitialized) return;
-            window.ytElysianInitialized = true;
-
+            if (window.ytPantheonInitialized) return;
+            window.ytPantheonInitialized = true;
             logger.logStart();
             utils.injectCSS();
             RuleEngine.init();

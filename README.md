@@ -1,6 +1,6 @@
 # 🎯 YouTube 淨化大師
 
-**YouTube Purifier** — 一個為極致體驗而生的油猴（Tampermonkey）腳本，專注於提供一個 **高速、純粹、可自訂** 的 YouTube 瀏覽環境。
+**YouTube 淨化大師** 一個為極致體驗而生的油猴（Tampermonkey）腳本，專注於提供一個 **高速、純粹、可自訂** 的 YouTube 瀏覽環境。
 
 它不僅能掃除廣告、Shorts、推薦區塊等視覺干擾，更具備強大的自訂過濾能力，讓您完全掌控自己的資訊流。
 

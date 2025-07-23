@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師 (Pantheon)
 // @namespace    http://tampermonkey.net/
-// @version      25.0
-// @description  v25.0: 完美兼容！實現「懸停預覽播放」與「點擊開啟新分頁」並存。採用智慧型全局 pointerdown 攔截，精確處理預覽播放器與標準項目的點擊事件。
+// @version      25.1
+// @description  v25.1: 新增過濾「為你推薦的特選電影」區塊 | v25.0: 完美兼容！實現「懸停預覽播放」與「點擊開啟新分頁」並存。採用智慧型全局 pointerdown 攔截，精確處理預覽播放器與標準項目的點擊事件。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -20,7 +20,7 @@
     'use strict';
 
     // --- 設定與常數 (Config and Constants) ---
-    const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '25.0' };
+    const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '25.1' };
     const ATTRS = {
         PROCESSED: 'data-yt-pantheon-processed',
         HIDDEN_REASON: 'data-yt-pantheon-hidden-reason',
@@ -195,6 +195,19 @@
                 { id: 'shorts_block', name: 'Shorts 區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#title', keyword: /^Shorts$/i }] } },
                 { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#title', keyword: /貼文|posts/i }] } },
                 { id: 'shorts_grid_shelf', name: 'Shorts 區塊 (Grid)', scope: 'grid-shelf-view-model', conditions: { any: [{ type: 'text', selector: 'h2.shelf-header-layout-wiz__title', keyword: /^Shorts$/i }] } },
+                
+                // [v25.1 新增] 過濾電影推薦區塊
+                {
+                    id: 'movies_shelf',
+                    name: '電影推薦區塊',
+                    scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer',
+                    conditions: {
+                        any: [
+                            { type: 'text', selector: '#title', keyword: /為你推薦的特選電影|featured movies for you/i },
+                            { type: 'text', selector: 'p.ytd-badge-supported-renderer', keyword: /^YouTube 精選$/i }
+                        ]
+                    }
+                },
 
                 // --- 低觀看數過濾 (條件性啟用) ---
                 ...(CONFIG.ENABLE_LOW_VIEW_FILTER ? [

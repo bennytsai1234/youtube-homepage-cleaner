@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師 (Pantheon)
 // @namespace    http://tampermonkey.net/
-// @version      25.1
-// @description  v25.1: 新增過濾「為你推薦的特選電影」區塊 | v25.0: 完美兼容！實現「懸停預覽播放」與「點擊開啟新分頁」並存。採用智慧型全局 pointerdown 攔截，精確處理預覽播放器與標準項目的點擊事件。
+// @version      25.1.1
+// @description  v25.1.1: 修正對「頻道會員專屬」徽章的過濾規則 | v25.1: 新增過濾「為你推薦的特選電影」區塊 | v25.0: 完美兼容！實現「懸停預覽播放」與「點擊開啟新分頁」並存。採用智慧型全局 pointerdown 攔截，精確處理預覽播放器與標準項目的點擊事件。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -20,7 +20,7 @@
     'use strict';
 
     // --- 設定與常數 (Config and Constants) ---
-    const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '25.1' };
+    const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '25.1.1' };
     const ATTRS = {
         PROCESSED: 'data-yt-pantheon-processed',
         HIDDEN_REASON: 'data-yt-pantheon-hidden-reason',
@@ -175,7 +175,17 @@
             const allRules = [
                 // --- 通用項目過濾 ---
                 { id: 'ad_sponsor', name: '廣告/促銷', conditions: { any: [{ type: 'selector', value: '[aria-label*="廣告"], [aria-label*="Sponsor"], [aria-label="贊助商廣告"], ytd-ad-slot-renderer' }] } },
-                { id: 'members_only', name: '會員專屬', conditions: { any: [{ type: 'selector', value: '[aria-label*="會員專屬"], [aria-label*="Members only"]' }] } },
+                // --- [已修改] ---
+                {
+                    id: 'members_only',
+                    name: '會員專屬',
+                    conditions: {
+                        any: [
+                            { type: 'selector', value: '[aria-label*="會員專屬"], [aria-label*="Members only"]' },
+                            { type: 'text', selector: '.badge-shape-wiz__text', keyword: /頻道會員專屬|Members only/i }
+                        ]
+                    }
+                },
                 { id: 'shorts_item', name: 'Shorts (單個)', conditions: { any: [{ type: 'selector', value: 'a[href*="/shorts/"]' }] } },
 
                 // --- 僅過濾「合輯 (Mix)」，保留「播放清單 (Playlist)」 ---

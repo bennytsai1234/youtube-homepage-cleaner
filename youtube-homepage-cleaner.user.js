@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師 (Pantheon)
 // @namespace    http://tampermonkey.net/
-// @version      27.2.0
-// @description  v27.2 "Aeterna-Fix 2": 關鍵修正！修復因 querySelector 只找首個元素導致的過濾失效問題(如會員專屬)，規則引擎更健壯。
+// @version      27.4.0
+// @description  v27.4 "Aeterna-Final-Fix": 究極修正！重寫核心解析器，徹底解決因全形冒號(：)等符號導致的觀看數解析失敗問題。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -20,7 +20,7 @@
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '27.2.0' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '27.4.0' };
 const ATTRS = {
     PROCESSED: 'data-yt-pantheon-processed',
     HIDDEN_REASON: 'data-yt-pantheon-hidden-reason',
@@ -74,29 +74,32 @@ const utils = {
         return m[u.toLowerCase()] || 1;
     },
 
+    // [v27.4] 究極強化版解析器
     parseNumeric: (text, type) => {
         if (!text) return null;
-        const segments = text.split(/[:•·|—-]+/);
+
         const keywords = {
             live: /(正在觀看|觀眾|watching|viewers)/i,
             view: /(view|觀看|次)/i,
         };
         const antiKeywords = /(分鐘|小時|天|週|月|年|ago|minute|hour|day|week|month|year)/i;
 
-        for (const segment of segments) {
-            const raw = segment.replace(/,/g, '').toLowerCase().trim();
-            if (!keywords[type].test(raw)) continue;
-            if (type === 'view' && antiKeywords.test(raw)) continue;
+        const raw = text.replace(/,/g, '').toLowerCase().trim();
 
-            const m = raw.match(/([\d.]+)\s*([kmb千萬万億亿])?/i);
-            if (!m) continue;
+        // 1. 檢查是否包含必要的關鍵字
+        if (!keywords[type].test(raw)) return null;
 
-            const num = parseFloat(m[1]);
-            if (isNaN(num)) continue;
+        // 2. 如果是計數類型，確保它不是純粹的時間描述
+        if (type === 'view' && antiKeywords.test(raw) && !keywords.view.test(raw)) return null;
 
-            return Math.floor(num * utils.unitMultiplier(m[2]));
-        }
-        return null;
+        // 3. 使用更強健的Regex從字串中任何位置提取數字
+        const m = raw.match(/([\d.]+)\s*([kmb千萬万億亿])?/i);
+        if (!m) return null;
+
+        const num = parseFloat(m[1]);
+        if (isNaN(num)) return null;
+
+        return Math.floor(num * utils.unitMultiplier(m[2]));
     },
     parseLiveViewers: (text) => utils.parseNumeric(text, 'live'),
     parseViewCount: (text) => utils.parseNumeric(text, 'view'),
@@ -110,6 +113,7 @@ const utils = {
     },
 
     findPrimaryLink(container) {
+        if (!container) return null;
         const candidates = [
             'a#thumbnail[href*="/watch?"]', 'a#thumbnail[href*="/shorts/"]', 'a#thumbnail[href*="/playlist?"]',
             'a#video-title-link', 'a.yt-simple-endpoint#video-title', 'a.yt-lockup-view-model-wiz__title'
@@ -124,11 +128,29 @@ const utils = {
 
 // --- 日誌記錄器 ---
 const logger = {
+    _batch: [],
     prefix: `[${SCRIPT_INFO.name}]`,
     style: (color) => `color:${color}; font-weight:bold;`,
     info: (msg, color = '#3498db') => CONFIG.DEBUG_MODE && console.log(`%c${logger.prefix} [INFO] ${msg}`, logger.style(color)),
-    hide: (source, ruleName, reason, element) => CONFIG.DEBUG_MODE && console.log(`%c${logger.prefix} [HIDE] Rule:"${ruleName}" | Reason:${reason} | Src:[${source}]`, logger.style('#e74c3c'), element),
-    logStart: () => console.log(`%c🏛️ ${logger.prefix} v${SCRIPT_INFO.version} "Aeterna" 啟動. (Debug: ${CONFIG.DEBUG_MODE})`, 'color:#8e44ad; font-weight:bold; font-size: 1.2em;'),
+
+    startBatch() { this._batch = []; },
+    hide(source, ruleName, reason, element) {
+        if (!CONFIG.DEBUG_MODE) return;
+        this._batch.push({ ruleName, reason, element, source });
+    },
+    flushBatch() {
+        if (!CONFIG.DEBUG_MODE || this._batch.length === 0) return;
+        const summary = this._batch.reduce((acc, item) => {
+            acc[item.ruleName] = (acc[item.ruleName] || 0) + 1;
+            return acc;
+        }, {});
+        const summaryString = Object.entries(summary).map(([name, count]) => `${name}: ${count}`).join(', ');
+        console.groupCollapsed(`%c${this.prefix} [HIDE BATCH] Hiding ${this._batch.length} items from ${this._batch[0].source} | ${summaryString}`, this.style('#e74c3c'));
+        this._batch.forEach(item => console.log(`Rule:"${item.ruleName}" | Reason:${item.reason}`, item.element));
+        console.groupEnd();
+    },
+
+    logStart: () => console.log(`%c🏛️ ${SCRIPT_INFO.name} v${SCRIPT_INFO.version} "Aeterna" 啟動. (Debug: ${CONFIG.DEBUG_MODE})`, 'color:#8e44ad; font-weight:bold; font-size: 1.2em;'),
 };
 
 // --- 功能增強模組 ---
@@ -159,9 +181,8 @@ const Enhancer = {
                     const clickBlocker = (eClick) => { eClick.preventDefault(); eClick.stopImmediatePropagation(); };
                     document.addEventListener('click', clickBlocker, { capture: true, once: true });
                     window.open(targetLink.href, '_blank');
-                    logger.info(`(Smart Global Intercept) 在新分頁中開啟: ${targetLink.href}`, '#2ecc71');
                 }
-            } catch (err) { /* 忽略無效URL錯誤 */ }
+            } catch (err) {}
         }, { capture: true });
     }
 };
@@ -171,7 +192,6 @@ const RuleEngine = {
     ruleCache: new Map(),
     globalRules: [],
     rawRuleDefinitions: [],
-
     init() {
         this.ruleCache.clear();
         this.globalRules = [];
@@ -211,7 +231,6 @@ const RuleEngine = {
         });
     },
 
-    // [v27.2] 關鍵修正：將 'text' 檢查從 querySelector 改為 querySelectorAll
     checkCondition(container, condition) {
         try {
             switch (condition.type) {
@@ -287,9 +306,11 @@ const RuleEngine = {
 const Main = {
     menuIds: [],
     scanPage: (source) => {
+        logger.startBatch();
         for (const sel of SELECTORS.TOP_LEVEL_FILTERS) {
             try { document.querySelectorAll(`${sel}:not([${ATTRS.PROCESSED}])`).forEach(el => RuleEngine.processContainer(el, source)); } catch (e) {}
         }
+        logger.flushBatch();
     },
     resetAndRescan(message) {
         logger.info(message);

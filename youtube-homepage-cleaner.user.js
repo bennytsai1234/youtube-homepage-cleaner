@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         YouTube 淨化大師 (Pantheon)
+// @name         YouTube 淨化大師 (Pantheon) - 定製版
 // @namespace    http://tampermonkey.net/
-// @version      27.4.0
-// @description  v27.4 "Aeterna-Final-Fix": 究極修正！重寫核心解析器，徹底解決因全形冒號(：)等符號導致的觀看數解析失敗問題。
+// @version      27.4.3-custom
+// @description  v27.4 "Aeterna-Final-Fix": 究極修正！重寫核心解析器。新增區塊過濾並修復觀看數解析器選擇器。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -20,7 +20,7 @@
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '27.4.0' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '27.4.3-custom' };
 const ATTRS = {
     PROCESSED: 'data-yt-pantheon-processed',
     HIDDEN_REASON: 'data-yt-pantheon-hidden-reason',
@@ -32,6 +32,8 @@ const DEFAULT_RULE_ENABLES = {
     ad_sponsor: true, members_only: true, shorts_item: true, mix_only: true,
     premium_banner: true, news_block: true, shorts_block: true, posts_block: true,
     shorts_grid_shelf: true, movies_shelf: true,
+    popular_gaming_shelf: true,
+    more_from_game_shelf: true,
 };
 const DEFAULT_LOW_VIEW_THRESHOLD = 1000;
 
@@ -74,31 +76,20 @@ const utils = {
         return m[u.toLowerCase()] || 1;
     },
 
-    // [v27.4] 究極強化版解析器
     parseNumeric: (text, type) => {
         if (!text) return null;
-
         const keywords = {
             live: /(正在觀看|觀眾|watching|viewers)/i,
             view: /(view|觀看|次)/i,
         };
         const antiKeywords = /(分鐘|小時|天|週|月|年|ago|minute|hour|day|week|month|year)/i;
-
         const raw = text.replace(/,/g, '').toLowerCase().trim();
-
-        // 1. 檢查是否包含必要的關鍵字
         if (!keywords[type].test(raw)) return null;
-
-        // 2. 如果是計數類型，確保它不是純粹的時間描述
         if (type === 'view' && antiKeywords.test(raw) && !keywords.view.test(raw)) return null;
-
-        // 3. 使用更強健的Regex從字串中任何位置提取數字
         const m = raw.match(/([\d.]+)\s*([kmb千萬万億亿])?/i);
         if (!m) return null;
-
         const num = parseFloat(m[1]);
         if (isNaN(num)) return null;
-
         return Math.floor(num * utils.unitMultiplier(m[2]));
     },
     parseLiveViewers: (text) => utils.parseNumeric(text, 'live'),
@@ -132,7 +123,6 @@ const logger = {
     prefix: `[${SCRIPT_INFO.name}]`,
     style: (color) => `color:${color}; font-weight:bold;`,
     info: (msg, color = '#3498db') => CONFIG.DEBUG_MODE && console.log(`%c${logger.prefix} [INFO] ${msg}`, logger.style(color)),
-
     startBatch() { this._batch = []; },
     hide(source, ruleName, reason, element) {
         if (!CONFIG.DEBUG_MODE) return;
@@ -149,7 +139,6 @@ const logger = {
         this._batch.forEach(item => console.log(`Rule:"${item.ruleName}" | Reason:${item.reason}`, item.element));
         console.groupEnd();
     },
-
     logStart: () => console.log(`%c🏛️ ${SCRIPT_INFO.name} v${SCRIPT_INFO.version} "Aeterna" 啟動. (Debug: ${CONFIG.DEBUG_MODE})`, 'color:#8e44ad; font-weight:bold; font-size: 1.2em;'),
 };
 
@@ -160,10 +149,8 @@ const Enhancer = {
             if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
             const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next';
             if (e.target.closest(exclusions)) return;
-
             let targetLink = null;
             const previewPlayer = e.target.closest(SELECTORS.INLINE_PREVIEW_PLAYER);
-
             if (previewPlayer) {
                 targetLink = utils.findPrimaryLink(previewPlayer) || utils.findPrimaryLink(previewPlayer.closest(SELECTORS.CLICKABLE_CONTAINERS.join(',')));
             } else {
@@ -172,7 +159,6 @@ const Enhancer = {
                 const channelLink = e.target.closest('a#avatar-link, .ytd-channel-name a, a[href^="/@"], a[href^="/channel/"]');
                 targetLink = channelLink?.href ? channelLink : utils.findPrimaryLink(container);
             }
-
             try {
                 const isValidTarget = targetLink?.href && (new URL(targetLink.href, location.origin)).hostname.includes('youtube.com');
                 if (isValidTarget) {
@@ -206,6 +192,8 @@ const RuleEngine = {
             { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: 'h2 #title', keyword: /貼文|Posts|投稿|Publicaciones/i }] } },
             { id: 'shorts_grid_shelf', name: 'Shorts 區塊 (Grid)', scope: 'grid-shelf-view-model', conditions: { any: [{ type: 'text', selector: 'h2.shelf-header-layout-wiz__title', keyword: /^Shorts$/i }] } },
             { id: 'movies_shelf', name: '電影推薦區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: 'h2 #title', keyword: /為你推薦的特選電影|featured movies/i }, { type: 'text', selector: 'p.ytd-badge-supported-renderer', keyword: /YouTube 精選/i } ] } },
+            { id: 'popular_gaming_shelf', name: '熱門遊戲直播區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: 'h2 #title', keyword: /^熱門遊戲直播$/i }] } },
+            { id: 'more_from_game_shelf', name: '「更多相關內容」區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#subtitle', keyword: /^更多此遊戲相關內容$/i }] } },
         ];
 
         const activeRules = this.rawRuleDefinitions.filter(rule => CONFIG.RULE_ENABLES[rule.id] !== false);
@@ -253,15 +241,25 @@ const RuleEngine = {
         } catch (e) { return { state: State.KEEP }; }
     },
 
+    // ========== [MODIFIED] ==========
     checkNumericMetadata(container, condition) {
         const parser = condition.type === 'liveViewers' ? utils.parseLiveViewers : utils.parseViewCount;
-        const textSources = [ ...Array.from(container.querySelectorAll('#metadata-line .inline-metadata-item, .yt-content-metadata-view-model-wiz__metadata-text'), el => el.textContent), utils.extractAriaTextForCounts(container) ];
+        // The selector list now includes both the "-wiz" and non-"-wiz" versions to catch all variations.
+        const selectors = [
+            '#metadata-line .inline-metadata-item',
+            '.yt-content-metadata-view-model-wiz__metadata-text',
+            '.yt-content-metadata-view-model__metadata-text'
+        ].join(', ');
+
+        const textSources = [ ...Array.from(container.querySelectorAll(selectors), el => el.textContent), utils.extractAriaTextForCounts(container) ];
+
         for (const text of textSources) {
             const count = parser(text);
             if (count !== null) return count < condition.threshold ? { state: State.HIDE, reason: `${condition.type}: ${count} < ${condition.threshold}` } : { state: State.KEEP };
         }
         return container.tagName.includes('PLAYLIST') ? { state: State.KEEP } : { state: State.WAIT };
     },
+    // ===================================
 
     checkRule(container, rule) {
         if (rule.scope && !container.matches(rule.scope)) return { state: State.KEEP };

@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         YouTube 淨化大師 (Pantheon) - 定製版
+// @name         YouTube 淨化大師 (Pantheon) - 定製版 (含推廣區塊過濾)
 // @namespace    http://tampermonkey.net/
-// @version      27.4.3-custom
-// @description  v27.4 "Aeterna-Final-Fix": 究極修正！重寫核心解析器。新增區塊過濾並修復觀看數解析器選擇器。
+// @version      27.4.4-custom-fix1
+// @description  v27.4 "Aeterna-Final-Fix": 究極修正！重寫核心解析器。新增區塊過濾並修復觀看數解析器選擇器。已加入對「YouTube 精選」推廣區塊的過濾。修正播放清單連結問題。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -20,7 +20,7 @@
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '27.4.3-custom' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '27.4.4-custom-fix1' };
 const ATTRS = {
     PROCESSED: 'data-yt-pantheon-processed',
     HIDDEN_REASON: 'data-yt-pantheon-hidden-reason',
@@ -31,7 +31,7 @@ const State = { HIDE: 'HIDE', KEEP: 'KEEP', WAIT: 'WAIT' };
 const DEFAULT_RULE_ENABLES = {
     ad_sponsor: true, members_only: true, shorts_item: true, mix_only: true,
     premium_banner: true, news_block: true, shorts_block: true, posts_block: true,
-    shorts_grid_shelf: true, movies_shelf: true,
+    shorts_grid_shelf: true, movies_shelf: true, youtube_featured_shelf: true, // 新規則預設啟用
     popular_gaming_shelf: true,
     more_from_game_shelf: true,
 };
@@ -147,7 +147,10 @@ const Enhancer = {
     initGlobalClickListener() {
         document.addEventListener('pointerdown', (e) => {
             if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-            const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next';
+            // ========== [修改處] ==========
+            // 在排除列表中加入了 .yt-core-attributed-string__link，以避免攔截「查看完整播放清單」這類連結
+            const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next, .yt-core-attributed-string__link';
+            // ===============================
             if (e.target.closest(exclusions)) return;
             let targetLink = null;
             const previewPlayer = e.target.closest(SELECTORS.INLINE_PREVIEW_PLAYER);
@@ -192,6 +195,18 @@ const RuleEngine = {
             { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: 'h2 #title', keyword: /貼文|Posts|投稿|Publicaciones/i }] } },
             { id: 'shorts_grid_shelf', name: 'Shorts 區塊 (Grid)', scope: 'grid-shelf-view-model', conditions: { any: [{ type: 'text', selector: 'h2.shelf-header-layout-wiz__title', keyword: /^Shorts$/i }] } },
             { id: 'movies_shelf', name: '電影推薦區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: 'h2 #title', keyword: /為你推薦的特選電影|featured movies/i }, { type: 'text', selector: 'p.ytd-badge-supported-renderer', keyword: /YouTube 精選/i } ] } },
+            // ========== [新增規則] ==========
+            {
+                id: 'youtube_featured_shelf',
+                name: 'YouTube 精選推廣區塊',
+                scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer',
+                conditions: {
+                    any: [
+                        { type: 'text', selector: '.yt-shelf-header-layout__sublabel', keyword: /YouTube 精選/i }
+                    ]
+                }
+            },
+            // ===============================
             { id: 'popular_gaming_shelf', name: '熱門遊戲直播區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: 'h2 #title', keyword: /^熱門遊戲直播$/i }] } },
             { id: 'more_from_game_shelf', name: '「更多相關內容」區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#subtitle', keyword: /^更多此遊戲相關內容$/i }] } },
         ];
@@ -241,10 +256,8 @@ const RuleEngine = {
         } catch (e) { return { state: State.KEEP }; }
     },
 
-    // ========== [MODIFIED] ==========
     checkNumericMetadata(container, condition) {
         const parser = condition.type === 'liveViewers' ? utils.parseLiveViewers : utils.parseViewCount;
-        // The selector list now includes both the "-wiz" and non-"-wiz" versions to catch all variations.
         const selectors = [
             '#metadata-line .inline-metadata-item',
             '.yt-content-metadata-view-model-wiz__metadata-text',
@@ -259,7 +272,6 @@ const RuleEngine = {
         }
         return container.tagName.includes('PLAYLIST') ? { state: State.KEEP } : { state: State.WAIT };
     },
-    // ===================================
 
     checkRule(container, rule) {
         if (rule.scope && !container.matches(rule.scope)) return { state: State.KEEP };

@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         YouTube 淨化大師 (Pantheon) - 定製版 (含推廣區塊過濾)
+// @name         YouTube 淨化大師 (Pantheon)
 // @namespace    http://tampermonkey.net/
-// @version      27.4.4-custom-fix1
-// @description  v27.4 "Aeterna-Final-Fix": 究極修正！重寫核心解析器。新增區塊過濾並修復觀看數解析器選擇器。已加入對「YouTube 精選」推廣區塊的過濾。修正播放清單連結問題。
+// @version      1.0
+// @description  v1.0 "Foundation": 一款強大的 YouTube 內容過濾器，提供高度可自訂的規則與點擊優化功能，讓您完全掌控瀏覽體驗。包含廣告、Shorts、推薦區塊過濾，並支援點擊影片/頻道連結時在新分頁中開啟。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -20,7 +20,7 @@
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '27.4.4-custom-fix1' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '1.0' };
 const ATTRS = {
     PROCESSED: 'data-yt-pantheon-processed',
     HIDDEN_REASON: 'data-yt-pantheon-hidden-reason',
@@ -31,7 +31,7 @@ const State = { HIDE: 'HIDE', KEEP: 'KEEP', WAIT: 'WAIT' };
 const DEFAULT_RULE_ENABLES = {
     ad_sponsor: true, members_only: true, shorts_item: true, mix_only: true,
     premium_banner: true, news_block: true, shorts_block: true, posts_block: true,
-    shorts_grid_shelf: true, movies_shelf: true, youtube_featured_shelf: true, // 新規則預設啟用
+    shorts_grid_shelf: true, movies_shelf: true, youtube_featured_shelf: true,
     popular_gaming_shelf: true,
     more_from_game_shelf: true,
 };
@@ -57,7 +57,8 @@ const SELECTORS = {
     ],
     CLICKABLE_CONTAINERS: [
         'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer',
-        'yt-lockup-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer'
+        'yt-lockup-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer',
+        'ytd-video-owner-renderer' // 增強：捕獲影片下方的頻道區塊點擊
     ],
     INLINE_PREVIEW_PLAYER: 'ytd-video-preview',
     init() {
@@ -75,7 +76,6 @@ const utils = {
         const m = { 'k': 1e3, 'm': 1e6, 'b': 1e9, '千': 1e3, '萬': 1e4, '万': 1e4, '億': 1e8, '亿': 1e8 };
         return m[u.toLowerCase()] || 1;
     },
-
     parseNumeric: (text, type) => {
         if (!text) return null;
         const keywords = {
@@ -94,7 +94,6 @@ const utils = {
     },
     parseLiveViewers: (text) => utils.parseNumeric(text, 'live'),
     parseViewCount: (text) => utils.parseNumeric(text, 'view'),
-
     extractAriaTextForCounts(container) {
         const a1 = container.querySelector(':scope a#video-title-link[aria-label]');
         if (a1?.ariaLabel) return a1.ariaLabel;
@@ -102,7 +101,6 @@ const utils = {
         if (a2?.ariaLabel) return a2.ariaLabel;
         return '';
     },
-
     findPrimaryLink(container) {
         if (!container) return null;
         const candidates = [
@@ -139,7 +137,7 @@ const logger = {
         this._batch.forEach(item => console.log(`Rule:"${item.ruleName}" | Reason:${item.reason}`, item.element));
         console.groupEnd();
     },
-    logStart: () => console.log(`%c🏛️ ${SCRIPT_INFO.name} v${SCRIPT_INFO.version} "Aeterna" 啟動. (Debug: ${CONFIG.DEBUG_MODE})`, 'color:#8e44ad; font-weight:bold; font-size: 1.2em;'),
+    logStart: () => console.log(`%c🏛️ ${SCRIPT_INFO.name} v${SCRIPT_INFO.version} "Foundation" 啟動. (Debug: ${CONFIG.DEBUG_MODE})`, 'color:#8e44ad; font-weight:bold; font-size: 1.2em;'),
 };
 
 // --- 功能增強模組 ---
@@ -147,10 +145,7 @@ const Enhancer = {
     initGlobalClickListener() {
         document.addEventListener('pointerdown', (e) => {
             if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-            // ========== [修改處] ==========
-            // 在排除列表中加入了 .yt-core-attributed-string__link，以避免攔截「查看完整播放清單」這類連結
-            const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next, .yt-core-attributed-string__link';
-            // ===============================
+            const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next, .yt-core-attributed-string__link, #subscribe-button';
             if (e.target.closest(exclusions)) return;
             let targetLink = null;
             const previewPlayer = e.target.closest(SELECTORS.INLINE_PREVIEW_PLAYER);
@@ -195,18 +190,7 @@ const RuleEngine = {
             { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: 'h2 #title', keyword: /貼文|Posts|投稿|Publicaciones/i }] } },
             { id: 'shorts_grid_shelf', name: 'Shorts 區塊 (Grid)', scope: 'grid-shelf-view-model', conditions: { any: [{ type: 'text', selector: 'h2.shelf-header-layout-wiz__title', keyword: /^Shorts$/i }] } },
             { id: 'movies_shelf', name: '電影推薦區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: 'h2 #title', keyword: /為你推薦的特選電影|featured movies/i }, { type: 'text', selector: 'p.ytd-badge-supported-renderer', keyword: /YouTube 精選/i } ] } },
-            // ========== [新增規則] ==========
-            {
-                id: 'youtube_featured_shelf',
-                name: 'YouTube 精選推廣區塊',
-                scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer',
-                conditions: {
-                    any: [
-                        { type: 'text', selector: '.yt-shelf-header-layout__sublabel', keyword: /YouTube 精選/i }
-                    ]
-                }
-            },
-            // ===============================
+            { id: 'youtube_featured_shelf', name: 'YouTube 精選推廣區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: '.yt-shelf-header-layout__sublabel', keyword: /YouTube 精選/i } ] } },
             { id: 'popular_gaming_shelf', name: '熱門遊戲直播區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: 'h2 #title', keyword: /^熱門遊戲直播$/i }] } },
             { id: 'more_from_game_shelf', name: '「更多相關內容」區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#subtitle', keyword: /^更多此遊戲相關內容$/i }] } },
         ];

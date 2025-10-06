@@ -1,82 +1,39 @@
-# 🎯 YouTube 淨化大師
-
-**YouTube 淨化大師** 一個為極致體驗而生的油猴（Tampermonkey）腳本，專注於提供一個 **高速、純粹、可自訂** 的 YouTube 瀏覽環境。
-
-它不僅能掃除廣告、推薦區塊等視覺干擾，更具備強大的自訂過濾能力，讓您完全掌控自己的資訊流。
-
----
-## 📌 腳本簡介
-
-**YouTube 淨化大師 (Pantheon)** 是一款專為 YouTube 設計的高級內容過濾與行為優化腳本，具備強大而智能的影片過濾引擎與點擊行為控制。  
-本腳本旨在為使用者打造一個**無廣告、無干擾、完全掌控的觀看體驗**。
-
----
-
-## ✨ 主要功能與特色
-
-### 🧼 內容過濾模組
-自動隱藏以下干擾內容：
-- ✅ 廣告、贊助商推廣、Premium 橫幅
-- ✅ Shorts 區塊與單一 Shorts 項目
-- ✅ 合輯 (Mix) 影片、自動播放串
-- ✅ 新聞快報、貼文、社群區塊
-- ✅ 會員專屬影片（可選擇開啟/關閉）
-- ✅ 低觀看數的影片與直播（可調整閾值）
-
-> 💡 預設「低觀看數過濾」會啟用，你可以在腳本功能表中一鍵切換！
-
----
-
-### 🖱️ 智慧點擊優化（v25.0 重大升級）
-- 🚀 支援「**懸停預覽播放**」與「**點擊開啟新分頁**」同時存在！
-- 🧠 全域攔截 `pointerdown` 事件，精準判斷你是否點擊了預覽播放器或影片縮圖
-- 🔗 自動在新分頁中開啟影片、Shorts 或播放清單，**避免 SPA 導航打斷瀏覽流程**
-
----
-
-### 🛠️ 使用者設定
-透過瀏覽器右上角的 Tampermonkey 功能表，可進行：
-- ✅ 開啟 / 關閉「低觀看數過濾」
-- ✅ 開啟 / 關閉「Debug 模式」（用於查看哪些內容被過濾）
-
----
-
-## ⚡️ 安裝教學
-
+🎯 YouTube 淨化大師
+一個為極致體驗而生的油猴（Tampermonkey）腳本，專注於提供一個 高速、純粹、且完全由您掌控 的 YouTube 瀏覽環境。
+它不僅能掃除所有視覺干擾，更能透過高度自訂的過濾引擎與點擊優化，讓您重新奪回資訊流的主導權。
+✨ 主要功能與特色
+🧼 強大的內容過濾引擎
+腳本會自動並精準地移除頁面上的各種干擾元素，您可以透過選單獨立開關每一條規則：
+✅ 廣告與推廣: 影片廣告、首頁橫幅廣告、贊助商內容、Premium 推廣橫幅。
+✅ Shorts: 首頁的 Shorts 區塊與搜尋結果中的單一 Shorts 項目。
+✅ 推薦區塊: 合輯 (Mix)、新聞快報、貼文、電影推薦、YouTube 精選等。
+✅ 特殊內容: 會員專屬影片。
+✅ 低熱度內容: 自動過濾觀看數或直播觀眾數過於低迷的影片 (閾值可自訂)。
+🖱️ 全方位點擊優化
+告別 YouTube 的頁內跳轉（SPA）機制，回歸最直覺的多分頁瀏覽體驗：
+🚀 一律在新分頁開啟: 無論點擊影片、Shorts、播放清單，還是頻道連結，都會自動在新分頁中開啟。
+🧠 範圍覆蓋完整: 此功能有效範圍涵蓋首頁、搜尋結果、以及影片播放頁面下方的作者頭像與名稱區塊。
+🔗 流程不中斷: 讓您在探索新內容時，不會打斷當前正在瀏覽的頁面。
+⚙️ 高度可自訂的選單
+無需修改任何程式碼！所有功能均可透過 Tampermonkey 選單即時設定：
+✅ 一鍵開關：所有過濾規則 (如 Shorts、新聞、廣告等) 均可獨立啟用或停用。
+✅ 低觀看數過濾：自由開關，並可自訂過濾的觀看數/觀眾數閾值（例如：只看超過 5000 觀看的影片）。
+✅ Debug 模式：為開發者或好奇的使用者提供，啟用後可在瀏覽器控制台查看詳細的過濾日誌。
+✅ 一鍵重設：隨時可以將所有設定恢復為腳本的建議預設值。
+⚡️ 安裝教學
 只需兩個步驟，即可立即啟用：
-
-### 1️⃣ 安裝使用者腳本管理器
-
-請先在您的瀏覽器中安裝 **Tampermonkey**：
-
-- [安裝於 Chrome](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
-- [安裝於 Firefox](https://addons.mozilla.org/firefox/addon/tampermonkey/)
-- [安裝於 Edge](https://microsoftedge.microsoft.com/addons/detail/tampermonkey/iikmkjmpaadaobahmlepeloendndfphd)
-
-（其他管理器如 Violentmonkey 亦可支援）
-
-### 2️⃣ 安裝本腳本
-
+1️⃣ 安裝使用者腳本管理器
+請先在您的瀏覽器中安裝 Tampermonkey (或其他相容的管理器)：
+安裝於 Chrome
+安裝於 Firefox
+安裝於 Edge
+2️⃣ 安裝本腳本
 點擊下方連結，並在跳出的視窗中點擊「安裝」即可。
-
-➡️ **[點我安裝「YouTube 淨化大師」](https://github.com/bennytsai1234/youtube-homepage-cleaner/raw/main/youtube-homepage-cleaner.user.js)** ⬅️
-
-
----
-
-## 🤝 歡迎貢獻
-
-如果您發現 BUG、有新功能建議或想優化程式碼，歡迎隨時提交 [Issues](https://github.com/bennytsai1234/youtube-homepage-cleaner/issues) 或發起 Pull Request。
-
----
-
-## 🙏 特別致謝
-
-- **Benny**：原創作者，為本專案奠定了堅實基礎。
-- **AI Collaborators (Gemini, Claude, etc.)**：協助進行重構、優化與功能迭代。
-
----
-
-## 📄 授權條款
-
-本專案採用 [MIT License](LICENSE) 授權。
+➡️ 點我安裝「YouTube 淨化大師」 ⬅️
+🤝 歡迎貢獻
+如果您發現 BUG、有新功能建議或想優化程式碼，歡迎隨時提交 Issues 或發起 Pull Request。
+🙏 特別致謝
+Benny：原創作者，為本專案奠定了堅實基礎。
+AI Collaborators (Gemini, Claude, etc.)：協助進行重構、優化與功能迭代。
+📄 授權條款
+本專案採用 MIT License 授權。

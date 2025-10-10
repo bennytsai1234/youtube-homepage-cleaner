@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         YouTube 淨化大師 (Pantheon)
+// @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  v1.0 "Foundation": 一款強大的 YouTube 內容過濾器，提供高度可自訂的規則與點擊優化功能，讓您完全掌控瀏覽體驗。包含廣告、Shorts、推薦區塊過濾，並支援點擊影片/頻道連結時在新分頁中開啟。
+// @version      1.1
+// @description  v1.1: 修正點擊攔截機制以恢復拖曳功能。增強「合輯(Mix)」過濾規則，有效處理首頁推薦。一款強大的 YouTube 內容過濾器，提供高度可自訂的規則與點擊優化。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -20,11 +20,11 @@
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube Purifier Pantheon', version: '1.0' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1' };
 const ATTRS = {
-    PROCESSED: 'data-yt-pantheon-processed',
-    HIDDEN_REASON: 'data-yt-pantheon-hidden-reason',
-    WAIT_COUNT: 'data-yt-pantheon-wait-count',
+    PROCESSED: 'data-yt-purifier-processed',
+    HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
+    WAIT_COUNT: 'data-yt-purifier-wait-count',
 };
 const State = { HIDE: 'HIDE', KEEP: 'KEEP', WAIT: 'WAIT' };
 
@@ -58,7 +58,7 @@ const SELECTORS = {
     CLICKABLE_CONTAINERS: [
         'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer',
         'yt-lockup-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer',
-        'ytd-video-owner-renderer' // 增強：捕獲影片下方的頻道區塊點擊
+        'ytd-video-owner-renderer'
     ],
     INLINE_PREVIEW_PLAYER: 'ytd-video-preview',
     init() {
@@ -137,33 +137,35 @@ const logger = {
         this._batch.forEach(item => console.log(`Rule:"${item.ruleName}" | Reason:${item.reason}`, item.element));
         console.groupEnd();
     },
-    logStart: () => console.log(`%c🏛️ ${SCRIPT_INFO.name} v${SCRIPT_INFO.version} "Foundation" 啟動. (Debug: ${CONFIG.DEBUG_MODE})`, 'color:#8e44ad; font-weight:bold; font-size: 1.2em;'),
+    logStart: () => console.log(`%c🚀 ${SCRIPT_INFO.name} v${SCRIPT_INFO.version} 啟動. (Debug: ${CONFIG.DEBUG_MODE})`, 'color:#3498db; font-weight:bold; font-size: 1.2em;'),
 };
 
 // --- 功能增強模組 ---
 const Enhancer = {
     initGlobalClickListener() {
-        document.addEventListener('pointerdown', (e) => {
+        document.addEventListener('click', (e) => {
             if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
             const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next, .yt-core-attributed-string__link, #subscribe-button';
             if (e.target.closest(exclusions)) return;
+
             let targetLink = null;
             const previewPlayer = e.target.closest(SELECTORS.INLINE_PREVIEW_PLAYER);
             if (previewPlayer) {
-                targetLink = utils.findPrimaryLink(previewPlayer) || utils.findPrimaryLink(previewPlayer.closest(SELECTORS.CLICKABLE_CONTAINERS.join(',')));
+                 targetLink = utils.findPrimaryLink(previewPlayer) || utils.findPrimaryLink(previewPlayer.closest(SELECTORS.CLICKABLE_CONTAINERS.join(',')));
             } else {
-                const container = e.target.closest(SELECTORS.CLICKABLE_CONTAINERS.join(', '));
-                if (!container) return;
-                const channelLink = e.target.closest('a#avatar-link, .ytd-channel-name a, a[href^="/@"], a[href^="/channel/"]');
-                targetLink = channelLink?.href ? channelLink : utils.findPrimaryLink(container);
+                 const container = e.target.closest(SELECTORS.CLICKABLE_CONTAINERS.join(', '));
+                 if (!container) return;
+                 const channelLink = e.target.closest('a#avatar-link, .ytd-channel-name a, a[href^="/@"], a[href^="/channel/"]');
+                 targetLink = channelLink?.href ? channelLink : utils.findPrimaryLink(container);
             }
+
+            if (!targetLink) return;
+
             try {
-                const isValidTarget = targetLink?.href && (new URL(targetLink.href, location.origin)).hostname.includes('youtube.com');
+                const isValidTarget = targetLink.href && (new URL(targetLink.href, location.origin)).hostname.includes('youtube.com');
                 if (isValidTarget) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
-                    const clickBlocker = (eClick) => { eClick.preventDefault(); eClick.stopImmediatePropagation(); };
-                    document.addEventListener('click', clickBlocker, { capture: true, once: true });
                     window.open(targetLink.href, '_blank');
                 }
             } catch (err) {}
@@ -183,7 +185,17 @@ const RuleEngine = {
             { id: 'ad_sponsor', name: '廣告/促銷', conditions: { any: [{ type: 'selector', value: '[aria-label*="廣告"], [aria-label*="Sponsor"], [aria-label="贊助商廣告"], ytd-ad-slot-renderer' }] } },
             { id: 'members_only', name: '會員專屬', conditions: { any: [ { type: 'selector', value: '[aria-label*="會員專屬"]' }, { type: 'text', selector: '.badge-shape-wiz__text', keyword: /頻道會員專屬|Members only/i } ] } },
             { id: 'shorts_item', name: 'Shorts (單個)', conditions: { any: [{ type: 'selector', value: 'a[href*="/shorts/"]' }] } },
-            { id: 'mix_only', name: '合輯 (Mix)', conditions: { any: [{ type: 'text', selector: '.badge-shape-wiz__text, ytd-thumbnail-overlay-side-panel-renderer', keyword: /(^|\s)(合輯|Mix)(\s|$)/i }] } },
+            {
+                id: 'mix_only',
+                name: '合輯 (Mix)',
+                conditions: {
+                    any: [
+                        { type: 'text', selector: '.badge-shape-wiz__text, ytd-thumbnail-overlay-side-panel-renderer, .yt-badge-shape__text', keyword: /(^|\s)(合輯|Mix)(\s|$)/i },
+                        { type: 'selector', value: 'a[aria-label*="合輯"], a[aria-label*="Mix"]' },
+                        { type: 'text', selector: '#video-title, .yt-lockup-metadata-view-model__title', keyword: /^(合輯|Mix)[\s-–]/i }
+                    ]
+                }
+            },
             { id: 'premium_banner', name: 'Premium 推廣', scope: 'ytd-statement-banner-renderer', conditions: { any: [{ type: 'selector', value: 'ytd-button-renderer' }] } },
             { id: 'news_block', name: '新聞區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: 'h2 #title', keyword: /新聞快報|Breaking News|ニュース/i }] } },
             { id: 'shorts_block', name: 'Shorts 區塊', scope: 'ytd-rich-shelf-renderer, ytd-reel-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#title, h2 #title', keyword: /^Shorts$/i }] } },
@@ -368,8 +380,8 @@ const Main = {
     },
 
     init() {
-        if (window.ytPantheonInitialized) return;
-        window.ytPantheonInitialized = true;
+        if (window.ytPurifierInitialized) return;
+        window.ytPurifierInitialized = true;
         logger.logStart();
         utils.injectCSS();
         RuleEngine.init();

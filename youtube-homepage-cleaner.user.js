@@ -2,7 +2,7 @@
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
 // @version      1.1.1
-// @description  v1.1.1: 新增「發燒影片」過濾規則。修正「會員專屬」過濾規則因應 YouTube 頁面更新。v1.1: 修正點擊攔截機制以恢復拖曳功能。增強「合輯(Mix)」過濾規則。一款強大的 YouTube 內容過濾器，提供高度可自訂的規則與點擊優化。
+// @description  為極致體驗而生的內容過濾器，可掃除Premium廣告/Shorts/推薦，優化點擊（一律新分頁開啟），規則可高度自訂。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info

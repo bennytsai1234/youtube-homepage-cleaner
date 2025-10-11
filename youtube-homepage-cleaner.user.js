@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.2
-// @description  v1.2: 修正「會員專屬」過濾規則因應 YouTube 頁面更新。v1.1: 修正點擊攔截機制以恢復拖曳功能。增強「合輯(Mix)」過濾規則，有效處理首頁推薦。一款強大的 YouTube 內容過濾器，提供高度可自訂的規則與點擊優化。
+// @version      1.1.1
+// @description  v1.1.1: 新增「發燒影片」過濾規則。修正「會員專屬」過濾規則因應 YouTube 頁面更新。v1.1: 修正點擊攔截機制以恢復拖曳功能。增強「合輯(Mix)」過濾規則。一款強大的 YouTube 內容過濾器，提供高度可自訂的規則與點擊優化。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.2' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.1' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -36,6 +36,7 @@ const DEFAULT_RULE_ENABLES = {
     shorts_grid_shelf: true, movies_shelf: true, youtube_featured_shelf: true,
     popular_gaming_shelf: true,
     more_from_game_shelf: true,
+    trending_playlist: true,
 };
 const DEFAULT_LOW_VIEW_THRESHOLD = 1000;
 
@@ -185,9 +186,7 @@ const RuleEngine = {
         this.globalRules = [];
         this.rawRuleDefinitions = [
             { id: 'ad_sponsor', name: '廣告/促銷', conditions: { any: [{ type: 'selector', value: '[aria-label*="廣告"], [aria-label*="Sponsor"], [aria-label="贊助商廣告"], ytd-ad-slot-renderer' }] } },
-            // ##### UPDATED RULE #####
             { id: 'members_only', name: '會員專屬', conditions: { any: [ { type: 'selector', value: '[aria-label*="會員專屬"]' }, { type: 'text', selector: '.badge-shape-wiz__text, .yt-badge-shape__text', keyword: /頻道會員專屬|Members only/i } ] } },
-            // ########################
             { id: 'shorts_item', name: 'Shorts (單個)', conditions: { any: [{ type: 'selector', value: 'a[href*="/shorts/"]' }] } },
             {
                 id: 'mix_only',
@@ -209,6 +208,16 @@ const RuleEngine = {
             { id: 'youtube_featured_shelf', name: 'YouTube 精選推廣區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: '.yt-shelf-header-layout__sublabel', keyword: /YouTube 精選/i } ] } },
             { id: 'popular_gaming_shelf', name: '熱門遊戲直播區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: 'h2 #title', keyword: /^熱門遊戲直播$/i }] } },
             { id: 'more_from_game_shelf', name: '「更多相關內容」區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#subtitle', keyword: /^更多此遊戲相關內容$/i }] } },
+            {
+                id: 'trending_playlist',
+                name: '發燒影片/熱門內容',
+                scope: 'ytd-rich-item-renderer, yt-lockup-view-model',
+                conditions: {
+                    any: [
+                        { type: 'text', selector: 'h3 a, #video-title', keyword: /發燒影片|Trending/i }
+                    ]
+                }
+            },
         ];
 
         const activeRules = this.rawRuleDefinitions.filter(rule => CONFIG.RULE_ENABLES[rule.id] !== false);

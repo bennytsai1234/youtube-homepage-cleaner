@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.1
-// @description  v1.1: 修正點擊攔截機制以恢復拖曳功能。增強「合輯(Mix)」過濾規則，有效處理首頁推薦。一款強大的 YouTube 內容過濾器，提供高度可自訂的規則與點擊優化。
+// @version      1.2
+// @description  v1.2: 修正「會員專屬」過濾規則因應 YouTube 頁面更新。v1.1: 修正點擊攔截機制以恢復拖曳功能。增強「合輯(Mix)」過濾規則，有效處理首頁推薦。一款強大的 YouTube 內容過濾器，提供高度可自訂的規則與點擊優化。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -14,13 +14,15 @@
 // @run-at       document-start
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=youtube.com
+// @downloadURL https://update.greasyfork.org/scripts/543292/YouTube%20%E6%B7%A8%E5%8C%96%E5%A4%A7%E5%B8%AB.user.js
+// @updateURL https://update.greasyfork.org/scripts/543292/YouTube%20%E6%B7%A8%E5%8C%96%E5%A4%A7%E5%B8%AB.meta.js
 // ==/UserScript==
 
 (function () {
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.2' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -183,7 +185,9 @@ const RuleEngine = {
         this.globalRules = [];
         this.rawRuleDefinitions = [
             { id: 'ad_sponsor', name: '廣告/促銷', conditions: { any: [{ type: 'selector', value: '[aria-label*="廣告"], [aria-label*="Sponsor"], [aria-label="贊助商廣告"], ytd-ad-slot-renderer' }] } },
-            { id: 'members_only', name: '會員專屬', conditions: { any: [ { type: 'selector', value: '[aria-label*="會員專屬"]' }, { type: 'text', selector: '.badge-shape-wiz__text', keyword: /頻道會員專屬|Members only/i } ] } },
+            // ##### UPDATED RULE #####
+            { id: 'members_only', name: '會員專屬', conditions: { any: [ { type: 'selector', value: '[aria-label*="會員專屬"]' }, { type: 'text', selector: '.badge-shape-wiz__text, .yt-badge-shape__text', keyword: /頻道會員專屬|Members only/i } ] } },
+            // ########################
             { id: 'shorts_item', name: 'Shorts (單個)', conditions: { any: [{ type: 'selector', value: 'a[href*="/shorts/"]' }] } },
             {
                 id: 'mix_only',

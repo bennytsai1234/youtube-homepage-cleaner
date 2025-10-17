@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.1.2
+// @version      1.1.3
 // @description  為極致體驗而生的內容過濾器，可掃除Premium廣告/Shorts/推薦，優化點擊（一律新分頁開啟），規則可高度自訂。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.2' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.3' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -388,7 +388,6 @@ const Main = {
             }
         });
 
-        // *** NEW: Consolidated rule settings menu ***
         addCmd('⚙️ 設定過濾規則...', () => { this.toggleRulesMenu(); });
 
         addCmd('--- 系統 ---', () => {});
@@ -396,7 +395,7 @@ const Main = {
             CONFIG.DEBUG_MODE = !CONFIG.DEBUG_MODE;
             GM_setValue('debugMode', CONFIG.DEBUG_MODE);
             logger.info(`Debug 模式 已${s('DEBUG_MODE') === '✅' ? '啟用' : '停用'}`);
-            this.setupMenu(); // Re-render menu to show debug status change
+            this.setupMenu();
         });
         addCmd('🔄 恢復預設設定', () => {
             if (confirm('確定要將所有過濾規則和設定恢復為預設值嗎？')) {
@@ -413,18 +412,29 @@ const Main = {
         });
     },
 
+    // *** INTEGRATED: Robust initialization logic from v1.1.1 ***
     init() {
+        if (window.ytPurifierInitialized) return;
+        window.ytPurifierInitialized = true;
+        
         logger.logStart();
         utils.injectCSS();
         RuleEngine.init();
-        Enhancer.initGlobalClickListener();
         this.setupMenu();
+        Enhancer.initGlobalClickListener();
 
-        const debouncedScan = utils.debounce(() => this.scanPage('dom-changed'), CONFIG.DEBOUNCE_DELAY);
+        const debouncedScan = utils.debounce(() => this.scanPage('observer'), CONFIG.DEBOUNCE_DELAY);
         const observer = new MutationObserver(debouncedScan);
-        observer.observe(document.documentElement, { childList: true, subtree: true });
-        setInterval(() => this.scanPage('periodic-scan'), CONFIG.PERIODIC_INTERVAL);
-        window.addEventListener('yt-navigate-finish', () => this.scanPage('yt-navigate-finish'));
+
+        const onReady = () => {
+            if (!document.body) return;
+            observer.observe(document.querySelector('ytd-app') || document.body, { childList: true, subtree: true });
+            window.addEventListener('yt-navigate-finish', () => this.scanPage('navigate'));
+            this.scanPage('initial');
+            setInterval(() => { try { this.scanPage('periodic'); } catch(e){} }, CONFIG.PERIODIC_INTERVAL);
+        };
+        
+        document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', onReady, { once: true }) : onReady();
     }
 };
 

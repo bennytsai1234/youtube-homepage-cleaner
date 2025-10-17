@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.1.1
+// @version      1.1.2
 // @description  為極致體驗而生的內容過濾器，可掃除Premium廣告/Shorts/推薦，優化點擊（一律新分頁開啟），規則可高度自訂。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.1' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.2' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -344,6 +344,29 @@ const Main = {
         this.setupMenu();
     },
 
+    toggleRulesMenu() {
+        let menuText = '請輸入要切換的規則編號：\n\n';
+        RuleEngine.rawRuleDefinitions.forEach((rule, index) => {
+            const mark = CONFIG.RULE_ENABLES[rule.id] !== false ? '✅' : '❌';
+            menuText += `${index + 1}. ${mark} ${rule.name}\n`;
+        });
+        menuText += '\n輸入數字後按確定即可切換。';
+
+        const choice = prompt(menuText);
+        if (choice === null) return; // User cancelled
+
+        const index = parseInt(choice, 10) - 1;
+        if (!isNaN(index) && index >= 0 && index < RuleEngine.rawRuleDefinitions.length) {
+            const rule = RuleEngine.rawRuleDefinitions[index];
+            const isEnabled = CONFIG.RULE_ENABLES[rule.id] !== false;
+            CONFIG.RULE_ENABLES[rule.id] = !isEnabled;
+            GM_setValue('ruleEnables', CONFIG.RULE_ENABLES);
+            this.resetAndRescan(`規則「${rule.name}」已${!isEnabled ? '啟用' : '停用'}`);
+        } else if (choice.trim() !== '') {
+            alert('無效的輸入，請輸入列表中的數字。');
+        }
+    },
+
     setupMenu() {
         this.menuIds.forEach(id => { try { GM_unregisterMenuCommand(id); } catch (e) {} });
         this.menuIds = [];
@@ -364,54 +387,47 @@ const Main = {
                 this.resetAndRescan(`觀看數過濾閾值已更新為 ${newThreshold}`);
             }
         });
-        addCmd('--- 過濾規則開關 ---', () => {});
-        RuleEngine.rawRuleDefinitions.forEach(rule => {
-            const mark = CONFIG.RULE_ENABLES[rule.id] !== false ? '✅' : '❌';
-            addCmd(`${mark} 過濾：${rule.name}`, () => {
-                const isEnabled = CONFIG.RULE_ENABLES[rule.id] !== false;
-                CONFIG.RULE_ENABLES[rule.id] = !isEnabled;
-                GM_setValue('ruleEnables', CONFIG.RULE_ENABLES);
-                this.resetAndRescan(`規則「${rule.name}」已${!isEnabled ? '啟用' : '停用'}`);
-            });
-        });
+
+        // *** NEW: Consolidated rule settings menu ***
+        addCmd('⚙️ 設定過濾規則...', () => { this.toggleRulesMenu(); });
+
         addCmd('--- 系統 ---', () => {});
         addCmd(`${s('DEBUG_MODE')} Debug 模式`, () => {
             CONFIG.DEBUG_MODE = !CONFIG.DEBUG_MODE;
             GM_setValue('debugMode', CONFIG.DEBUG_MODE);
             logger.info(`Debug 模式 已${s('DEBUG_MODE') === '✅' ? '啟用' : '停用'}`);
-            this.setupMenu();
+            this.setupMenu(); // Re-render menu to show debug status change
         });
         addCmd('🔄 恢復預設設定', () => {
             if (confirm('確定要將所有過濾規則和設定恢復為預設值嗎？')) {
                 GM_setValue('ruleEnables', { ...DEFAULT_RULE_ENABLES });
                 GM_setValue('lowViewThreshold', DEFAULT_LOW_VIEW_THRESHOLD);
+                GM_setValue('enableLowViewFilter', true);
+
                 CONFIG.RULE_ENABLES = { ...DEFAULT_RULE_ENABLES };
                 CONFIG.LOW_VIEW_THRESHOLD = DEFAULT_LOW_VIEW_THRESHOLD;
+                CONFIG.ENABLE_LOW_VIEW_FILTER = true;
+
                 this.resetAndRescan('所有設定已恢復為預設值。');
             }
         });
     },
 
     init() {
-        if (window.ytPurifierInitialized) return;
-        window.ytPurifierInitialized = true;
         logger.logStart();
         utils.injectCSS();
         RuleEngine.init();
-        this.setupMenu();
         Enhancer.initGlobalClickListener();
-        const debouncedScan = utils.debounce(() => this.scanPage('observer'), CONFIG.DEBOUNCE_DELAY);
+        this.setupMenu();
+
+        const debouncedScan = utils.debounce(() => this.scanPage('dom-changed'), CONFIG.DEBOUNCE_DELAY);
         const observer = new MutationObserver(debouncedScan);
-        const onReady = () => {
-            if (!document.body) return;
-            observer.observe(document.querySelector('ytd-app') || document.body, { childList: true, subtree: true });
-            window.addEventListener('yt-navigate-finish', () => this.scanPage('navigate'));
-            this.scanPage('initial');
-            setInterval(() => { try { this.scanPage('periodic'); } catch(e){} }, CONFIG.PERIODIC_INTERVAL);
-        };
-        document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', onReady, { once: true }) : onReady();
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+        setInterval(() => this.scanPage('periodic-scan'), CONFIG.PERIODIC_INTERVAL);
+        window.addEventListener('yt-navigate-finish', () => this.scanPage('yt-navigate-finish'));
     }
 };
 
 Main.init();
+
 })();

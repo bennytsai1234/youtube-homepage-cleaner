@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.1.4
+// @version      1.1.5
 // @description  為極致體驗而生的內容過濾器，可掃除Premium廣告/Shorts/推薦/問卷，優化點擊（一律新分頁開啟），規則可高度自訂。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.4' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.5' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -37,7 +37,7 @@ const DEFAULT_RULE_ENABLES = {
     popular_gaming_shelf: true,
     more_from_game_shelf: true,
     trending_playlist: true,
-    inline_survey: true, // 新增規則的預設開關
+    inline_survey: true,
 };
 const DEFAULT_LOW_VIEW_THRESHOLD = 1000;
 
@@ -186,7 +186,6 @@ const RuleEngine = {
         this.ruleCache.clear();
         this.globalRules = [];
         this.rawRuleDefinitions = [
-            // --- Standard Rules ---
             { id: 'ad_sponsor', name: '廣告/促銷', conditions: { any: [{ type: 'selector', value: '[aria-label*="廣告"], [aria-label*="Sponsor"], [aria-label="贊助商廣告"], ytd-ad-slot-renderer' }] } },
             { id: 'members_only', name: '會員專屬', conditions: { any: [ { type: 'selector', value: '[aria-label*="會員專屬"]' }, { type: 'text', selector: '.badge-shape-wiz__text, .yt-badge-shape__text', keyword: /頻道會員專屬|Members only/i } ] } },
             { id: 'shorts_item', name: 'Shorts (單個)', conditions: { any: [{ type: 'selector', value: 'a[href*="/shorts/"]' }] } },
@@ -201,7 +200,6 @@ const RuleEngine = {
                     ]
                 }
             },
-            // --- Shelf and Section Rules ---
             { id: 'premium_banner', name: 'Premium 推廣', scope: 'ytd-statement-banner-renderer', conditions: { any: [{ type: 'selector', value: 'ytd-button-renderer' }] } },
             { id: 'news_block', name: '新聞區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: 'h2 #title', keyword: /新聞快報|Breaking News|ニュース/i }] } },
             { id: 'shorts_block', name: 'Shorts 區塊', scope: 'ytd-rich-shelf-renderer, ytd-reel-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#title, h2 #title', keyword: /^Shorts$/i }] } },
@@ -217,7 +215,6 @@ const RuleEngine = {
                 scope: 'ytd-rich-item-renderer, yt-lockup-view-model',
                 conditions: { any: [{ type: 'text', selector: 'h3 a, #video-title', keyword: /發燒影片|Trending/i }] }
             },
-            // *** NEW RULE for Survey ***
             {
                 id: 'inline_survey',
                 name: '意見調查問卷',
@@ -307,10 +304,25 @@ const RuleEngine = {
         for (const rule of relevantRules) {
             const result = this.checkRule(container, rule);
             if (result.state === State.HIDE) {
-                container.style.setProperty('display', 'none', 'important');
+                // *** NEW LOGIC START: Find the outermost wrapper to hide ***
+                let finalTarget = container;
+                const parentSelectors = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer';
+                const parentWrapper = container.closest(parentSelectors);
+
+                // If the container is nested inside a more significant wrapper, hide the wrapper.
+                if (parentWrapper && parentWrapper !== container) {
+                    finalTarget = parentWrapper;
+                }
+
+                finalTarget.style.setProperty('display', 'none', 'important');
+                
+                // Mark both the original container and the final target as processed.
                 container.setAttribute(ATTRS.PROCESSED, 'hidden');
-                container.setAttribute(ATTRS.HIDDEN_REASON, result.ruleId);
-                logger.hide(source, rule.name, result.reason, container);
+                finalTarget.setAttribute(ATTRS.PROCESSED, 'hidden');
+                finalTarget.setAttribute(ATTRS.HIDDEN_REASON, result.ruleId);
+
+                logger.hide(source, rule.name, result.reason, finalTarget);
+                // *** NEW LOGIC END ***
                 return;
             }
             if (result.state === State.WAIT) finalState = State.WAIT;

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.1.6
-// @description  為極致體驗而生的內容過濾器，可掃除Premium廣告/Shorts/推薦/問卷，優化點擊（一律新分頁開啟），規則可高度自訂。
+// @version      1.1.7
+// @description  為極致體驗而生的內容過濾器，可掃除Premium廣告/Shorts/推薦/問卷/資訊面板，優化點擊（一律新分頁開啟），規則可高度自訂。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.6' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.7' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -38,6 +38,7 @@ const DEFAULT_RULE_ENABLES = {
     more_from_game_shelf: true,
     trending_playlist: true,
     inline_survey: true,
+    clarify_box: true, // *** NEW RULE ENABLED BY DEFAULT ***
 };
 const DEFAULT_LOW_VIEW_THRESHOLD = 1000;
 
@@ -58,13 +59,12 @@ const SELECTORS = {
         'ytd-video-renderer', 'ytd-compact-video-renderer', 'ytd-reel-shelf-renderer',
         'ytd-ad-slot-renderer', 'yt-lockup-view-model', 'ytd-statement-banner-renderer',
         'grid-shelf-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer',
-        'ytd-grid-video-renderer' // *** ADDED for channel pages etc. ***
+        'ytd-grid-video-renderer', 'ytd-info-panel-container-renderer' // *** ADDED info panel ***
     ],
     CLICKABLE_CONTAINERS: [
         'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer',
         'yt-lockup-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer',
-        'ytd-video-owner-renderer',
-        'ytd-grid-video-renderer' // *** ADDED for channel pages etc. ***
+        'ytd-video-owner-renderer', 'ytd-grid-video-renderer'
     ],
     INLINE_PREVIEW_PLAYER: 'ytd-video-preview',
     init() {
@@ -223,6 +223,13 @@ const RuleEngine = {
                 scope: 'ytd-rich-section-renderer',
                 conditions: { any: [{ type: 'selector', value: 'ytd-inline-survey-renderer' }] }
             },
+            // *** NEW RULE for Clarify Box / Info Panel ***
+            {
+                id: 'clarify_box',
+                name: '資訊面板 (維基百科)',
+                scope: 'ytd-info-panel-container-renderer',
+                conditions: { any: [{ type: 'selector', value: 'h2.header-left-items' }] }
+            },
         ];
 
         const activeRules = this.rawRuleDefinitions.filter(rule => CONFIG.RULE_ENABLES[rule.id] !== false);
@@ -308,7 +315,10 @@ const RuleEngine = {
             if (result.state === State.HIDE) {
                 let finalTarget = container;
                 const parentSelectors = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer';
-                const parentWrapper = container.closest(parentSelectors);
+                // For info panels, the element itself is the highest level container we want to hide.
+                const isInfoPanel = container.tagName === 'YTD-INFO-PANEL-CONTAINER-RENDERER';
+                const parentWrapper = isInfoPanel ? null : container.closest(parentSelectors);
+
 
                 if (parentWrapper && parentWrapper !== container) {
                     finalTarget = parentWrapper;

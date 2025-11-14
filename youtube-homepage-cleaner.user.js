@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.1.5
+// @version      1.1.6
 // @description  為極致體驗而生的內容過濾器，可掃除Premium廣告/Shorts/推薦/問卷，優化點擊（一律新分頁開啟），規則可高度自訂。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.5' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.6' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -57,12 +57,14 @@ const SELECTORS = {
         'ytd-rich-item-renderer', 'ytd-rich-section-renderer', 'ytd-rich-shelf-renderer',
         'ytd-video-renderer', 'ytd-compact-video-renderer', 'ytd-reel-shelf-renderer',
         'ytd-ad-slot-renderer', 'yt-lockup-view-model', 'ytd-statement-banner-renderer',
-        'grid-shelf-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer'
+        'grid-shelf-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer',
+        'ytd-grid-video-renderer' // *** ADDED for channel pages etc. ***
     ],
     CLICKABLE_CONTAINERS: [
         'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer',
         'yt-lockup-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer',
-        'ytd-video-owner-renderer'
+        'ytd-video-owner-renderer',
+        'ytd-grid-video-renderer' // *** ADDED for channel pages etc. ***
     ],
     INLINE_PREVIEW_PLAYER: 'ytd-video-preview',
     init() {
@@ -109,7 +111,7 @@ const utils = {
         if (!container) return null;
         const candidates = [
             'a#thumbnail[href*="/watch?"]', 'a#thumbnail[href*="/shorts/"]', 'a#thumbnail[href*="/playlist?"]',
-            'a#video-title-link', 'a.yt-simple-endpoint#video-title', 'a.yt-lockup-view-model-wiz__title'
+            'a#video-title-link', 'a#video-title', 'a.yt-simple-endpoint#video-title', 'a.yt-lockup-view-model-wiz__title'
         ];
         for (const sel of candidates) {
             const a = container.querySelector(sel);
@@ -225,7 +227,7 @@ const RuleEngine = {
 
         const activeRules = this.rawRuleDefinitions.filter(rule => CONFIG.RULE_ENABLES[rule.id] !== false);
         if (CONFIG.ENABLE_LOW_VIEW_FILTER) {
-            const lowViewScope = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model';
+            const lowViewScope = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model, ytd-grid-video-renderer';
             activeRules.push(
                 { id: 'low_viewer_live', name: '低觀眾直播', scope: lowViewScope, isConditional: true, conditions: { any: [{ type: 'liveViewers', threshold: CONFIG.LOW_VIEW_THRESHOLD }] } },
                 { id: 'low_view_video', name: '低觀看影片', scope: lowViewScope, isConditional: true, conditions: { any: [{ type: 'viewCount', threshold: CONFIG.LOW_VIEW_THRESHOLD }] } }
@@ -271,7 +273,7 @@ const RuleEngine = {
     checkNumericMetadata(container, condition) {
         const parser = condition.type === 'liveViewers' ? utils.parseLiveViewers : utils.parseViewCount;
         const selectors = [
-            '#metadata-line .inline-metadata-item',
+            '#metadata-line .inline-metadata-item', '#metadata-line span.ytd-grid-video-renderer',
             '.yt-content-metadata-view-model-wiz__metadata-text',
             '.yt-content-metadata-view-model__metadata-text'
         ].join(', ');
@@ -304,25 +306,21 @@ const RuleEngine = {
         for (const rule of relevantRules) {
             const result = this.checkRule(container, rule);
             if (result.state === State.HIDE) {
-                // *** NEW LOGIC START: Find the outermost wrapper to hide ***
                 let finalTarget = container;
-                const parentSelectors = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer';
+                const parentSelectors = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer';
                 const parentWrapper = container.closest(parentSelectors);
 
-                // If the container is nested inside a more significant wrapper, hide the wrapper.
                 if (parentWrapper && parentWrapper !== container) {
                     finalTarget = parentWrapper;
                 }
 
                 finalTarget.style.setProperty('display', 'none', 'important');
                 
-                // Mark both the original container and the final target as processed.
                 container.setAttribute(ATTRS.PROCESSED, 'hidden');
                 finalTarget.setAttribute(ATTRS.PROCESSED, 'hidden');
                 finalTarget.setAttribute(ATTRS.HIDDEN_REASON, result.ruleId);
 
                 logger.hide(source, rule.name, result.reason, finalTarget);
-                // *** NEW LOGIC END ***
                 return;
             }
             if (result.state === State.WAIT) finalState = State.WAIT;

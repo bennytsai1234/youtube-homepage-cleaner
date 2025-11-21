@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.1.7
+// @version      1.1.8
 // @description  為極致體驗而生的內容過濾器，可掃除Premium廣告/Shorts/推薦/問卷/資訊面板，優化點擊（一律新分頁開啟），規則可高度自訂。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.7' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.8' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -38,7 +38,8 @@ const DEFAULT_RULE_ENABLES = {
     more_from_game_shelf: true,
     trending_playlist: true,
     inline_survey: true,
-    clarify_box: true, // *** NEW RULE ENABLED BY DEFAULT ***
+    clarify_box: true,
+    explore_topics: true, // 針對新版「探索更多主題」
 };
 const DEFAULT_LOW_VIEW_THRESHOLD = 1000;
 
@@ -48,7 +49,7 @@ const CONFIG = {
     DEBUG_MODE: GM_getValue('debugMode', false),
     RULE_ENABLES: GM_getValue('ruleEnables', { ...DEFAULT_RULE_ENABLES }),
     DEBOUNCE_DELAY: 50,
-    PERIODIC_INTERVAL: 350,
+    PERIODIC_INTERVAL: 500,
     WAIT_MAX_RETRY: 5,
 };
 
@@ -59,7 +60,7 @@ const SELECTORS = {
         'ytd-video-renderer', 'ytd-compact-video-renderer', 'ytd-reel-shelf-renderer',
         'ytd-ad-slot-renderer', 'yt-lockup-view-model', 'ytd-statement-banner-renderer',
         'grid-shelf-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer',
-        'ytd-grid-video-renderer', 'ytd-info-panel-container-renderer' // *** ADDED info panel ***
+        'ytd-grid-video-renderer', 'ytd-info-panel-container-renderer'
     ],
     CLICKABLE_CONTAINERS: [
         'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer',
@@ -68,7 +69,7 @@ const SELECTORS = {
     ],
     INLINE_PREVIEW_PLAYER: 'ytd-video-preview',
     init() {
-        this.UNPROCESSED = this.TOP_LEVEL_FILTERS.map(s => `${s}:not([${ATTRS.PROCESSED}])`).join(', ');
+        this.COMBINED_SELECTOR = this.TOP_LEVEL_FILTERS.map(s => `${s}:not([${ATTRS.PROCESSED}])`).join(',');
         return this;
     }
 }.init();
@@ -76,7 +77,7 @@ const SELECTORS = {
 // --- 工具函數 ---
 const utils = {
     debounce: (func, delay) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => func(...a), delay); }; },
-    injectCSS: () => GM_addStyle('ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer { display: none !important; }'),
+    injectCSS: () => GM_addStyle('ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-statement-banner-renderer { display: none !important; }'),
     unitMultiplier: (u) => {
         if (!u) return 1;
         const m = { 'k': 1e3, 'm': 1e6, 'b': 1e9, '千': 1e3, '萬': 1e4, '万': 1e4, '億': 1e8, '亿': 1e8 };
@@ -127,7 +128,7 @@ const logger = {
     prefix: `[${SCRIPT_INFO.name}]`,
     style: (color) => `color:${color}; font-weight:bold;`,
     info: (msg, color = '#3498db') => CONFIG.DEBUG_MODE && console.log(`%c${logger.prefix} [INFO] ${msg}`, logger.style(color)),
-    startBatch() { this._batch = []; },
+    startBatch() { if(CONFIG.DEBUG_MODE) this._batch = []; },
     hide(source, ruleName, reason, element) {
         if (!CONFIG.DEBUG_MODE) return;
         this._batch.push({ ruleName, reason, element, source });
@@ -187,6 +188,10 @@ const RuleEngine = {
     init() {
         this.ruleCache.clear();
         this.globalRules = [];
+        
+        // 使用統一標題選擇器，相容新版介面
+        const TITLE_SELECTOR = '#title, #title-text, h2, .yt-shelf-header-layout__title';
+
         this.rawRuleDefinitions = [
             { id: 'ad_sponsor', name: '廣告/促銷', conditions: { any: [{ type: 'selector', value: '[aria-label*="廣告"], [aria-label*="Sponsor"], [aria-label="贊助商廣告"], ytd-ad-slot-renderer' }] } },
             { id: 'members_only', name: '會員專屬', conditions: { any: [ { type: 'selector', value: '[aria-label*="會員專屬"]' }, { type: 'text', selector: '.badge-shape-wiz__text, .yt-badge-shape__text', keyword: /頻道會員專屬|Members only/i } ] } },
@@ -203,13 +208,17 @@ const RuleEngine = {
                 }
             },
             { id: 'premium_banner', name: 'Premium 推廣', scope: 'ytd-statement-banner-renderer', conditions: { any: [{ type: 'selector', value: 'ytd-button-renderer' }] } },
-            { id: 'news_block', name: '新聞區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: 'h2 #title', keyword: /新聞快報|Breaking News|ニュース/i }] } },
-            { id: 'shorts_block', name: 'Shorts 區塊', scope: 'ytd-rich-shelf-renderer, ytd-reel-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#title, h2 #title', keyword: /^Shorts$/i }] } },
-            { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: 'h2 #title', keyword: /貼文|Posts|投稿|Publicaciones/i }] } },
+            
+            { id: 'news_block', name: '新聞區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: TITLE_SELECTOR, keyword: /新聞快報|Breaking News|ニュース/i }] } },
+            { id: 'shorts_block', name: 'Shorts 區塊', scope: 'ytd-rich-shelf-renderer, ytd-reel-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: TITLE_SELECTOR, keyword: /^Shorts$/i }] } },
+            { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: TITLE_SELECTOR, keyword: /貼文|Posts|投稿|Publicaciones|最新 YouTube 貼文/i }] } },
+            
+            { id: 'explore_topics', name: '探索更多主題', scope: 'ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: TITLE_SELECTOR, keyword: /探索更多主題|Explore more topics/i }] } },
+
             { id: 'shorts_grid_shelf', name: 'Shorts 區塊 (Grid)', scope: 'grid-shelf-view-model', conditions: { any: [{ type: 'text', selector: 'h2.shelf-header-layout-wiz__title', keyword: /^Shorts$/i }] } },
-            { id: 'movies_shelf', name: '電影推薦區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: 'h2 #title', keyword: /為你推薦的特選電影|featured movies/i }, { type: 'text', selector: 'p.ytd-badge-supported-renderer', keyword: /YouTube 精選/i } ] } },
+            { id: 'movies_shelf', name: '電影推薦區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: TITLE_SELECTOR, keyword: /為你推薦的特選電影|featured movies/i }, { type: 'text', selector: 'p.ytd-badge-supported-renderer', keyword: /YouTube 精選/i } ] } },
             { id: 'youtube_featured_shelf', name: 'YouTube 精選推廣區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: '.yt-shelf-header-layout__sublabel', keyword: /YouTube 精選/i } ] } },
-            { id: 'popular_gaming_shelf', name: '熱門遊戲直播區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: 'h2 #title', keyword: /^熱門遊戲直播$/i }] } },
+            { id: 'popular_gaming_shelf', name: '熱門遊戲直播區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: TITLE_SELECTOR, keyword: /^熱門遊戲直播$/i }] } },
             { id: 'more_from_game_shelf', name: '「更多相關內容」區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#subtitle', keyword: /^更多此遊戲相關內容$/i }] } },
             {
                 id: 'trending_playlist',
@@ -223,7 +232,6 @@ const RuleEngine = {
                 scope: 'ytd-rich-section-renderer',
                 conditions: { any: [{ type: 'selector', value: 'ytd-inline-survey-renderer' }] }
             },
-            // *** NEW RULE for Clarify Box / Info Panel ***
             {
                 id: 'clarify_box',
                 name: '資訊面板 (維基百科)',
@@ -315,17 +323,15 @@ const RuleEngine = {
             if (result.state === State.HIDE) {
                 let finalTarget = container;
                 const parentSelectors = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer';
-                // For info panels, the element itself is the highest level container we want to hide.
                 const isInfoPanel = container.tagName === 'YTD-INFO-PANEL-CONTAINER-RENDERER';
                 const parentWrapper = isInfoPanel ? null : container.closest(parentSelectors);
-
 
                 if (parentWrapper && parentWrapper !== container) {
                     finalTarget = parentWrapper;
                 }
 
                 finalTarget.style.setProperty('display', 'none', 'important');
-                
+
                 container.setAttribute(ATTRS.PROCESSED, 'hidden');
                 finalTarget.setAttribute(ATTRS.PROCESSED, 'hidden');
                 finalTarget.setAttribute(ATTRS.HIDDEN_REASON, result.ruleId);
@@ -352,9 +358,9 @@ const Main = {
     menuIds: [],
     scanPage: (source) => {
         logger.startBatch();
-        for (const sel of SELECTORS.TOP_LEVEL_FILTERS) {
-            try { document.querySelectorAll(`${sel}:not([${ATTRS.PROCESSED}])`).forEach(el => RuleEngine.processContainer(el, source)); } catch (e) {}
-        }
+        try {
+            document.querySelectorAll(SELECTORS.COMBINED_SELECTOR).forEach(el => RuleEngine.processContainer(el, source));
+        } catch (e) {}
         logger.flushBatch();
     },
     resetAndRescan(message) {
@@ -379,7 +385,7 @@ const Main = {
         menuText += '\n輸入數字後按確定即可切換。';
 
         const choice = prompt(menuText);
-        if (choice === null) return; // User cancelled
+        if (choice === null) return;
 
         const index = parseInt(choice, 10) - 1;
         if (!isNaN(index) && index >= 0 && index < RuleEngine.rawRuleDefinitions.length) {
@@ -441,7 +447,7 @@ const Main = {
     init() {
         if (window.ytPurifierInitialized) return;
         window.ytPurifierInitialized = true;
-        
+
         logger.logStart();
         utils.injectCSS();
         RuleEngine.init();
@@ -458,7 +464,7 @@ const Main = {
             this.scanPage('initial');
             setInterval(() => { try { this.scanPage('periodic'); } catch(e){} }, CONFIG.PERIODIC_INTERVAL);
         };
-        
+
         document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', onReady, { once: true }) : onReady();
     }
 };

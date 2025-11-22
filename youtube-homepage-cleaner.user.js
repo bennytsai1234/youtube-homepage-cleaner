@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.1.10
+// @version      1.1.11
 // @description  為極致體驗而生的內容過濾器。解決選單顯示不全問題，將設定分為主選單與規則子選單。可掃除Premium廣告/Shorts/推薦/問卷，並優化點擊體驗。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -450,15 +450,17 @@ const Main = {
         if (isNaN(index)) return;
 
         switch (index) {
-            case 1:
+            case 1: {
                 this.openRulesMenu();
                 break;
-            case 2:
+            }
+            case 2: {
                 CONFIG.ENABLE_LOW_VIEW_FILTER = !CONFIG.ENABLE_LOW_VIEW_FILTER;
                 GM_setValue('enableLowViewFilter', CONFIG.ENABLE_LOW_VIEW_FILTER);
                 this.resetAndRescan(`低觀看數過濾 已${CONFIG.ENABLE_LOW_VIEW_FILTER ? '啟用' : '停用'}`);
                 break;
-            case 3:
+            }
+            case 3: {
                 const input = prompt(`請輸入新的低觀看數過濾閾值 (純數字)\n當前值: ${CONFIG.LOW_VIEW_THRESHOLD}`, CONFIG.LOW_VIEW_THRESHOLD);
                 if (input !== null) {
                     const newThreshold = parseInt(input, 10);
@@ -471,18 +473,21 @@ const Main = {
                     }
                 }
                 break;
-            case 4:
+            }
+            case 4: {
                 CONFIG.OPEN_IN_NEW_TAB = !CONFIG.OPEN_IN_NEW_TAB;
                 GM_setValue('openInNewTab', CONFIG.OPEN_IN_NEW_TAB);
                 alert(`強制新分頁開啟已${CONFIG.OPEN_IN_NEW_TAB ? '啟用' : '停用'}。\n(停用此功能可獲得較佳的頁面加載速度)`);
                 break;
-            case 5:
+            }
+            case 5: {
                 CONFIG.DEBUG_MODE = !CONFIG.DEBUG_MODE;
                 GM_setValue('debugMode', CONFIG.DEBUG_MODE);
                 alert(`Debug 模式已${CONFIG.DEBUG_MODE ? '啟用' : '停用'}。\n請按 F12 開啟 Console 查看日誌。`);
                 this.resetAndRescan('Debug 設定變更');
                 break;
-            case 6:
+            }
+            case 6: {
                 if (confirm('⚠️ 確定要將所有設定（包含規則、閾值）恢復為預設值嗎？')) {
                     CONFIG.RULE_ENABLES = { ...DEFAULT_RULE_ENABLES };
                     CONFIG.LOW_VIEW_THRESHOLD = DEFAULT_CONFIG.LOW_VIEW_THRESHOLD;
@@ -498,8 +503,10 @@ const Main = {
                     alert('✅ 所有設定已恢復預設值。');
                 }
                 break;
-            default:
+            }
+            default: {
                 alert('❌ 無效的選項');
+            }
         }
     },
 

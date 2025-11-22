@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.1.8
-// @description  為極致體驗而生的內容過濾器，可掃除Premium廣告/Shorts/推薦/問卷/資訊面板，優化點擊（一律新分頁開啟），規則可高度自訂。
+// @version      1.1.9
+// @description  為極致體驗而生的內容過濾器，解決選單顯示不全問題，將設定分為主選單與規則子選單。可掃除Premium廣告/Shorts/推薦/問卷，並優化點擊體驗。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -21,8 +21,8 @@
 (function () {
 'use strict';
 
-// --- 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.8' };
+// --- 1. 設定與常數 ---
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.1.9' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -31,29 +31,42 @@ const ATTRS = {
 const State = { HIDE: 'HIDE', KEEP: 'KEEP', WAIT: 'WAIT' };
 
 const DEFAULT_RULE_ENABLES = {
-    ad_sponsor: true, members_only: true, shorts_item: true, mix_only: true,
-    premium_banner: true, news_block: true, shorts_block: true, posts_block: true,
-    shorts_grid_shelf: true, movies_shelf: true, youtube_featured_shelf: true,
+    ad_sponsor: true,
+    members_only: true,
+    shorts_item: true,
+    mix_only: true,
+    premium_banner: true,
+    news_block: true,
+    shorts_block: true,
+    posts_block: true,
+    shorts_grid_shelf: true,
+    movies_shelf: true,
+    youtube_featured_shelf: true,
     popular_gaming_shelf: true,
     more_from_game_shelf: true,
     trending_playlist: true,
     inline_survey: true,
     clarify_box: true,
-    explore_topics: true, // 針對新版「探索更多主題」
+    explore_topics: true,
 };
-const DEFAULT_LOW_VIEW_THRESHOLD = 1000;
+
+const DEFAULT_CONFIG = {
+    LOW_VIEW_THRESHOLD: 1000,
+    ENABLE_LOW_VIEW_FILTER: true,
+    DEBUG_MODE: false,
+};
 
 const CONFIG = {
-    ENABLE_LOW_VIEW_FILTER: GM_getValue('enableLowViewFilter', true),
-    LOW_VIEW_THRESHOLD: GM_getValue('lowViewThreshold', DEFAULT_LOW_VIEW_THRESHOLD),
-    DEBUG_MODE: GM_getValue('debugMode', false),
+    ENABLE_LOW_VIEW_FILTER: GM_getValue('enableLowViewFilter', DEFAULT_CONFIG.ENABLE_LOW_VIEW_FILTER),
+    LOW_VIEW_THRESHOLD: GM_getValue('lowViewThreshold', DEFAULT_CONFIG.LOW_VIEW_THRESHOLD),
+    DEBUG_MODE: GM_getValue('debugMode', DEFAULT_CONFIG.DEBUG_MODE),
     RULE_ENABLES: GM_getValue('ruleEnables', { ...DEFAULT_RULE_ENABLES }),
     DEBOUNCE_DELAY: 50,
-    PERIODIC_INTERVAL: 500,
+    PERIODIC_INTERVAL: 800,
     WAIT_MAX_RETRY: 5,
 };
 
-// 主要選擇器
+// --- 2. 選擇器定義 ---
 const SELECTORS = {
     TOP_LEVEL_FILTERS: [
         'ytd-rich-item-renderer', 'ytd-rich-section-renderer', 'ytd-rich-shelf-renderer',
@@ -68,21 +81,25 @@ const SELECTORS = {
         'ytd-video-owner-renderer', 'ytd-grid-video-renderer'
     ],
     INLINE_PREVIEW_PLAYER: 'ytd-video-preview',
+    TITLE_TEXT: '#title, #title-text, h2, .yt-shelf-header-layout__title',
+    
     init() {
         this.COMBINED_SELECTOR = this.TOP_LEVEL_FILTERS.map(s => `${s}:not([${ATTRS.PROCESSED}])`).join(',');
         return this;
     }
 }.init();
 
-// --- 工具函數 ---
+// --- 3. 工具函數 ---
 const utils = {
     debounce: (func, delay) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => func(...a), delay); }; },
     injectCSS: () => GM_addStyle('ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-statement-banner-renderer { display: none !important; }'),
+    
     unitMultiplier: (u) => {
         if (!u) return 1;
         const m = { 'k': 1e3, 'm': 1e6, 'b': 1e9, '千': 1e3, '萬': 1e4, '万': 1e4, '億': 1e8, '亿': 1e8 };
         return m[u.toLowerCase()] || 1;
     },
+    
     parseNumeric: (text, type) => {
         if (!text) return null;
         const keywords = {
@@ -91,16 +108,21 @@ const utils = {
         };
         const antiKeywords = /(分鐘|小時|天|週|月|年|ago|minute|hour|day|week|month|year)/i;
         const raw = text.replace(/,/g, '').toLowerCase().trim();
+        
         if (!keywords[type].test(raw)) return null;
         if (type === 'view' && antiKeywords.test(raw) && !keywords.view.test(raw)) return null;
+        
         const m = raw.match(/([\d.]+)\s*([kmb千萬万億亿])?/i);
         if (!m) return null;
+        
         const num = parseFloat(m[1]);
         if (isNaN(num)) return null;
         return Math.floor(num * utils.unitMultiplier(m[2]));
     },
+    
     parseLiveViewers: (text) => utils.parseNumeric(text, 'live'),
     parseViewCount: (text) => utils.parseNumeric(text, 'view'),
+    
     extractAriaTextForCounts(container) {
         const a1 = container.querySelector(':scope a#video-title-link[aria-label]');
         if (a1?.ariaLabel) return a1.ariaLabel;
@@ -108,6 +130,7 @@ const utils = {
         if (a2?.ariaLabel) return a2.ariaLabel;
         return '';
     },
+    
     findPrimaryLink(container) {
         if (!container) return null;
         const candidates = [
@@ -122,17 +145,20 @@ const utils = {
     }
 };
 
-// --- 日誌記錄器 ---
+// --- 4. 日誌系統 ---
 const logger = {
     _batch: [],
     prefix: `[${SCRIPT_INFO.name}]`,
     style: (color) => `color:${color}; font-weight:bold;`,
     info: (msg, color = '#3498db') => CONFIG.DEBUG_MODE && console.log(`%c${logger.prefix} [INFO] ${msg}`, logger.style(color)),
+    
     startBatch() { if(CONFIG.DEBUG_MODE) this._batch = []; },
+    
     hide(source, ruleName, reason, element) {
         if (!CONFIG.DEBUG_MODE) return;
         this._batch.push({ ruleName, reason, element, source });
     },
+    
     flushBatch() {
         if (!CONFIG.DEBUG_MODE || this._batch.length === 0) return;
         const summary = this._batch.reduce((acc, item) => {
@@ -144,19 +170,22 @@ const logger = {
         this._batch.forEach(item => console.log(`Rule:"${item.ruleName}" | Reason:${item.reason}`, item.element));
         console.groupEnd();
     },
+    
     logStart: () => console.log(`%c🚀 ${SCRIPT_INFO.name} v${SCRIPT_INFO.version} 啟動. (Debug: ${CONFIG.DEBUG_MODE})`, 'color:#3498db; font-weight:bold; font-size: 1.2em;'),
 };
 
-// --- 功能增強模組 ---
+// --- 5. 功能增強模組 ---
 const Enhancer = {
     initGlobalClickListener() {
         document.addEventListener('click', (e) => {
             if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+            
             const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next, .yt-core-attributed-string__link, #subscribe-button';
             if (e.target.closest(exclusions)) return;
 
             let targetLink = null;
             const previewPlayer = e.target.closest(SELECTORS.INLINE_PREVIEW_PLAYER);
+            
             if (previewPlayer) {
                  targetLink = utils.findPrimaryLink(previewPlayer) || utils.findPrimaryLink(previewPlayer.closest(SELECTORS.CLICKABLE_CONTAINERS.join(',')));
             } else {
@@ -180,18 +209,16 @@ const Enhancer = {
     }
 };
 
-// --- 統一規則引擎 ---
+// --- 6. 核心規則引擎 ---
 const RuleEngine = {
     ruleCache: new Map(),
     globalRules: [],
     rawRuleDefinitions: [],
+
     init() {
         this.ruleCache.clear();
         this.globalRules = [];
         
-        // 使用統一標題選擇器，相容新版介面
-        const TITLE_SELECTOR = '#title, #title-text, h2, .yt-shelf-header-layout__title';
-
         this.rawRuleDefinitions = [
             { id: 'ad_sponsor', name: '廣告/促銷', conditions: { any: [{ type: 'selector', value: '[aria-label*="廣告"], [aria-label*="Sponsor"], [aria-label="贊助商廣告"], ytd-ad-slot-renderer' }] } },
             { id: 'members_only', name: '會員專屬', conditions: { any: [ { type: 'selector', value: '[aria-label*="會員專屬"]' }, { type: 'text', selector: '.badge-shape-wiz__text, .yt-badge-shape__text', keyword: /頻道會員專屬|Members only/i } ] } },
@@ -209,38 +236,22 @@ const RuleEngine = {
             },
             { id: 'premium_banner', name: 'Premium 推廣', scope: 'ytd-statement-banner-renderer', conditions: { any: [{ type: 'selector', value: 'ytd-button-renderer' }] } },
             
-            { id: 'news_block', name: '新聞區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: TITLE_SELECTOR, keyword: /新聞快報|Breaking News|ニュース/i }] } },
-            { id: 'shorts_block', name: 'Shorts 區塊', scope: 'ytd-rich-shelf-renderer, ytd-reel-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: TITLE_SELECTOR, keyword: /^Shorts$/i }] } },
-            { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: TITLE_SELECTOR, keyword: /貼文|Posts|投稿|Publicaciones|最新 YouTube 貼文/i }] } },
-            
-            { id: 'explore_topics', name: '探索更多主題', scope: 'ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: TITLE_SELECTOR, keyword: /探索更多主題|Explore more topics/i }] } },
-
+            { id: 'news_block', name: '新聞區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /新聞快報|Breaking News|ニュース/i }] } },
+            { id: 'shorts_block', name: 'Shorts 區塊', scope: 'ytd-rich-shelf-renderer, ytd-reel-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /^Shorts$/i }] } },
+            { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /貼文|Posts|投稿|Publicaciones|最新 YouTube 貼文/i }] } },
+            { id: 'explore_topics', name: '探索更多主題', scope: 'ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /探索更多主題|Explore more topics/i }] } },
             { id: 'shorts_grid_shelf', name: 'Shorts 區塊 (Grid)', scope: 'grid-shelf-view-model', conditions: { any: [{ type: 'text', selector: 'h2.shelf-header-layout-wiz__title', keyword: /^Shorts$/i }] } },
-            { id: 'movies_shelf', name: '電影推薦區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: TITLE_SELECTOR, keyword: /為你推薦的特選電影|featured movies/i }, { type: 'text', selector: 'p.ytd-badge-supported-renderer', keyword: /YouTube 精選/i } ] } },
-            { id: 'youtube_featured_shelf', name: 'YouTube 精選推廣區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: '.yt-shelf-header-layout__sublabel', keyword: /YouTube 精選/i } ] } },
-            { id: 'popular_gaming_shelf', name: '熱門遊戲直播區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: TITLE_SELECTOR, keyword: /^熱門遊戲直播$/i }] } },
+            { id: 'movies_shelf', name: '電影推薦區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /為你推薦的特選電影|featured movies/i }, { type: 'text', selector: 'p.ytd-badge-supported-renderer', keyword: /YouTube 精選/i } ] } },
+            { id: 'youtube_featured_shelf', name: 'YouTube 精選區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: '.yt-shelf-header-layout__sublabel', keyword: /YouTube 精選/i } ] } },
+            { id: 'popular_gaming_shelf', name: '熱門遊戲區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /^熱門遊戲直播$/i }] } },
             { id: 'more_from_game_shelf', name: '「更多相關內容」區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#subtitle', keyword: /^更多此遊戲相關內容$/i }] } },
-            {
-                id: 'trending_playlist',
-                name: '發燒影片/熱門內容',
-                scope: 'ytd-rich-item-renderer, yt-lockup-view-model',
-                conditions: { any: [{ type: 'text', selector: 'h3 a, #video-title', keyword: /發燒影片|Trending/i }] }
-            },
-            {
-                id: 'inline_survey',
-                name: '意見調查問卷',
-                scope: 'ytd-rich-section-renderer',
-                conditions: { any: [{ type: 'selector', value: 'ytd-inline-survey-renderer' }] }
-            },
-            {
-                id: 'clarify_box',
-                name: '資訊面板 (維基百科)',
-                scope: 'ytd-info-panel-container-renderer',
-                conditions: { any: [{ type: 'selector', value: 'h2.header-left-items' }] }
-            },
+            { id: 'trending_playlist', name: '發燒影片/熱門內容', scope: 'ytd-rich-item-renderer, yt-lockup-view-model', conditions: { any: [{ type: 'text', selector: 'h3 a, #video-title', keyword: /發燒影片|Trending/i }] } },
+            { id: 'inline_survey', name: '意見調查問卷', scope: 'ytd-rich-section-renderer', conditions: { any: [{ type: 'selector', value: 'ytd-inline-survey-renderer' }] } },
+            { id: 'clarify_box', name: '資訊面板 (Wiki)', scope: 'ytd-info-panel-container-renderer', conditions: { any: [{ type: 'selector', value: 'h2.header-left-items' }] } },
         ];
 
         const activeRules = this.rawRuleDefinitions.filter(rule => CONFIG.RULE_ENABLES[rule.id] !== false);
+        
         if (CONFIG.ENABLE_LOW_VIEW_FILTER) {
             const lowViewScope = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model, ytd-grid-video-renderer';
             activeRules.push(
@@ -353,9 +364,10 @@ const RuleEngine = {
     }
 };
 
-// --- 主執行流程與菜單管理 ---
+// --- 7. 主控台與菜單系統 (分層選單修正版) ---
 const Main = {
-    menuIds: [],
+    menuHandle: null,
+
     scanPage: (source) => {
         logger.startBatch();
         try {
@@ -363,6 +375,7 @@ const Main = {
         } catch (e) {}
         logger.flushBatch();
     },
+
     resetAndRescan(message) {
         logger.info(message);
         document.querySelectorAll(`[${ATTRS.PROCESSED}]`).forEach(el => {
@@ -373,75 +386,114 @@ const Main = {
         });
         RuleEngine.init();
         this.scanPage('settings-changed');
-        this.setupMenu();
     },
 
-    toggleRulesMenu() {
-        let menuText = '請輸入要切換的規則編號：\n\n';
-        RuleEngine.rawRuleDefinitions.forEach((rule, index) => {
+    // 顯示規則子選單
+    openRulesMenu() {
+        const rules = RuleEngine.rawRuleDefinitions;
+        
+        let menuText = '【 詳細過濾規則開關 】\n請輸入編號切換 (輸入 0 返回)：\n\n';
+        rules.forEach((rule, index) => {
             const mark = CONFIG.RULE_ENABLES[rule.id] !== false ? '✅' : '❌';
             menuText += `${index + 1}. ${mark} ${rule.name}\n`;
         });
-        menuText += '\n輸入數字後按確定即可切換。';
+        menuText += '\n0. ⬅️ 返回主選單';
 
         const choice = prompt(menuText);
         if (choice === null) return;
 
-        const index = parseInt(choice, 10) - 1;
-        if (!isNaN(index) && index >= 0 && index < RuleEngine.rawRuleDefinitions.length) {
-            const rule = RuleEngine.rawRuleDefinitions[index];
+        const index = parseInt(choice.trim(), 10);
+        if (isNaN(index)) return;
+
+        if (index === 0) {
+            this.toggleMainMenu();
+        } else if (index >= 1 && index <= rules.length) {
+            const rule = rules[index - 1];
             const isEnabled = CONFIG.RULE_ENABLES[rule.id] !== false;
             CONFIG.RULE_ENABLES[rule.id] = !isEnabled;
             GM_setValue('ruleEnables', CONFIG.RULE_ENABLES);
             this.resetAndRescan(`規則「${rule.name}」已${!isEnabled ? '啟用' : '停用'}`);
-        } else if (choice.trim() !== '') {
-            alert('無效的輸入，請輸入列表中的數字。');
+            // 操作後停留在規則選單方便繼續修改
+            setTimeout(() => this.openRulesMenu(), 100);
+        } else {
+            alert('無效的選擇');
+            setTimeout(() => this.openRulesMenu(), 100);
+        }
+    },
+
+    // 顯示主選單
+    toggleMainMenu() {
+        const s = (val) => val ? '✅' : '❌';
+
+        let menuText = '【 YouTube 淨化大師 - 設定 】\n\n';
+        menuText += '1. 📂 設定詳細過濾規則 (進入子選單)...\n';
+        menuText += '--------------------------\n';
+        menuText += `2. ${s(CONFIG.ENABLE_LOW_VIEW_FILTER)} 啟用「低觀看數過濾」\n`;
+        menuText += `3. 🔢 修改過濾閾值 (目前: ${CONFIG.LOW_VIEW_THRESHOLD})\n`;
+        menuText += '--------------------------\n';
+        menuText += `4. ${s(CONFIG.DEBUG_MODE)} Debug 模式\n`;
+        menuText += `5. 🔄 恢復預設設定\n`;
+        
+        menuText += '\n請輸入數字：';
+
+        const choice = prompt(menuText);
+        if (choice === null) return;
+
+        const index = parseInt(choice.trim(), 10);
+        if (isNaN(index)) return;
+
+        switch (index) {
+            case 1:
+                this.openRulesMenu();
+                break;
+            case 2:
+                CONFIG.ENABLE_LOW_VIEW_FILTER = !CONFIG.ENABLE_LOW_VIEW_FILTER;
+                GM_setValue('enableLowViewFilter', CONFIG.ENABLE_LOW_VIEW_FILTER);
+                this.resetAndRescan(`低觀看數過濾 已${CONFIG.ENABLE_LOW_VIEW_FILTER ? '啟用' : '停用'}`);
+                break;
+            case 3:
+                const input = prompt(`請輸入新的低觀看數過濾閾值 (純數字)\n當前值: ${CONFIG.LOW_VIEW_THRESHOLD}`, CONFIG.LOW_VIEW_THRESHOLD);
+                if (input !== null) {
+                    const newThreshold = parseInt(input, 10);
+                    if (!isNaN(newThreshold) && newThreshold >= 0) {
+                        CONFIG.LOW_VIEW_THRESHOLD = newThreshold;
+                        GM_setValue('lowViewThreshold', newThreshold);
+                        this.resetAndRescan(`觀看數過濾閾值已更新為 ${newThreshold}`);
+                    } else {
+                        alert('❌ 請輸入有效的正整數。');
+                    }
+                }
+                break;
+            case 4:
+                CONFIG.DEBUG_MODE = !CONFIG.DEBUG_MODE;
+                GM_setValue('debugMode', CONFIG.DEBUG_MODE);
+                alert(`Debug 模式已${CONFIG.DEBUG_MODE ? '啟用' : '停用'}。\n請按 F12 開啟 Console 查看日誌。`);
+                this.resetAndRescan('Debug 設定變更');
+                break;
+            case 5:
+                if (confirm('⚠️ 確定要將所有設定（包含規則、閾值）恢復為預設值嗎？')) {
+                    CONFIG.RULE_ENABLES = { ...DEFAULT_RULE_ENABLES };
+                    CONFIG.LOW_VIEW_THRESHOLD = DEFAULT_CONFIG.LOW_VIEW_THRESHOLD;
+                    CONFIG.ENABLE_LOW_VIEW_FILTER = DEFAULT_CONFIG.ENABLE_LOW_VIEW_FILTER;
+                    CONFIG.DEBUG_MODE = DEFAULT_CONFIG.DEBUG_MODE;
+                    GM_setValue('ruleEnables', CONFIG.RULE_ENABLES);
+                    GM_setValue('lowViewThreshold', CONFIG.LOW_VIEW_THRESHOLD);
+                    GM_setValue('enableLowViewFilter', CONFIG.ENABLE_LOW_VIEW_FILTER);
+                    GM_setValue('debugMode', CONFIG.DEBUG_MODE);
+                    this.resetAndRescan('系統已恢復預設值');
+                    alert('✅ 所有設定已恢復預設值。');
+                }
+                break;
+            default:
+                alert('❌ 無效的選項');
         }
     },
 
     setupMenu() {
-        this.menuIds.forEach(id => { try { GM_unregisterMenuCommand(id); } catch (e) {} });
-        this.menuIds = [];
-
-        const addCmd = (text, func) => this.menuIds.push(GM_registerMenuCommand(text, func));
-        const s = (key) => CONFIG[key] ? '✅' : '❌';
-
-        addCmd(`${s('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (閾值: ${CONFIG.LOW_VIEW_THRESHOLD})`, () => {
-            CONFIG.ENABLE_LOW_VIEW_FILTER = !CONFIG.ENABLE_LOW_VIEW_FILTER;
-            GM_setValue('enableLowViewFilter', CONFIG.ENABLE_LOW_VIEW_FILTER);
-            this.resetAndRescan(`低觀看數過濾 已${s('ENABLE_LOW_VIEW_FILTER') === '✅' ? '啟用' : '停用'}`);
-        });
-        addCmd(`🔧 修改觀看數過濾閾值`, () => {
-            const newThreshold = parseInt(prompt('請輸入新的低觀看數過濾閾值（純數字）:', CONFIG.LOW_VIEW_THRESHOLD));
-            if (!isNaN(newThreshold) && newThreshold >= 0) {
-                CONFIG.LOW_VIEW_THRESHOLD = newThreshold;
-                GM_setValue('lowViewThreshold', newThreshold);
-                this.resetAndRescan(`觀看數過濾閾值已更新為 ${newThreshold}`);
-            }
-        });
-
-        addCmd('⚙️ 設定過濾規則...', () => { this.toggleRulesMenu(); });
-
-        addCmd('--- 系統 ---', () => {});
-        addCmd(`${s('DEBUG_MODE')} Debug 模式`, () => {
-            CONFIG.DEBUG_MODE = !CONFIG.DEBUG_MODE;
-            GM_setValue('debugMode', CONFIG.DEBUG_MODE);
-            logger.info(`Debug 模式 已${s('DEBUG_MODE') === '✅' ? '啟用' : '停用'}`);
-            this.setupMenu();
-        });
-        addCmd('🔄 恢復預設設定', () => {
-            if (confirm('確定要將所有過濾規則和設定恢復為預設值嗎？')) {
-                GM_setValue('ruleEnables', { ...DEFAULT_RULE_ENABLES });
-                GM_setValue('lowViewThreshold', DEFAULT_LOW_VIEW_THRESHOLD);
-                GM_setValue('enableLowViewFilter', true);
-
-                CONFIG.RULE_ENABLES = { ...DEFAULT_RULE_ENABLES };
-                CONFIG.LOW_VIEW_THRESHOLD = DEFAULT_LOW_VIEW_THRESHOLD;
-                CONFIG.ENABLE_LOW_VIEW_FILTER = true;
-
-                this.resetAndRescan('所有設定已恢復為預設值。');
-            }
-        });
+        if (this.menuHandle) {
+            try { GM_unregisterMenuCommand(this.menuHandle); } catch (e) {}
+        }
+        this.menuHandle = GM_registerMenuCommand('⚙️ 淨化大師設定 (Settings)...', () => { this.toggleMainMenu(); });
     },
 
     init() {
@@ -458,14 +510,20 @@ const Main = {
         const observer = new MutationObserver(debouncedScan);
 
         const onReady = () => {
-            if (!document.body) return;
-            observer.observe(document.querySelector('ytd-app') || document.body, { childList: true, subtree: true });
+            const target = document.querySelector('ytd-app') || document.body;
+            if (target) {
+                observer.observe(target, { childList: true, subtree: true });
+            }
             window.addEventListener('yt-navigate-finish', () => this.scanPage('navigate'));
             this.scanPage('initial');
             setInterval(() => { try { this.scanPage('periodic'); } catch(e){} }, CONFIG.PERIODIC_INTERVAL);
         };
 
-        document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', onReady, { once: true }) : onReady();
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', onReady, { once: true });
+        } else {
+            onReady();
+        }
     }
 };
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.2.0
+// @version      1.2.1
 // @description  為極致體驗而生的內容過濾器。透過移除定期掃描和新增快取機制，顯著提升效能。重構選單系統，提高可維護性。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*

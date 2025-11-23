@@ -62,6 +62,7 @@ const DEFAULT_CONFIG = {
     ENABLE_DURATION_FILTER: false, // 預設關閉長度過濾
     DURATION_MIN: 0, // 最短影片長度(秒)，0為不限制
     DURATION_MAX: 0, // 最長影片長度(秒)，0為不限制
+    GRACE_PERIOD_HOURS: 4, // 新影片豁免期(小時)
 };
 
 const CONFIG = {
@@ -77,6 +78,7 @@ const CONFIG = {
     ENABLE_DURATION_FILTER: GM_getValue('enableDurationFilter', DEFAULT_CONFIG.ENABLE_DURATION_FILTER),
     DURATION_MIN: GM_getValue('durationMin', DEFAULT_CONFIG.DURATION_MIN),
     DURATION_MAX: GM_getValue('durationMax', DEFAULT_CONFIG.DURATION_MAX),
+    GRACE_PERIOD_HOURS: GM_getValue('gracePeriodHours', DEFAULT_CONFIG.GRACE_PERIOD_HOURS),
     DEBOUNCE_DELAY: 50,
     WAIT_MAX_RETRY: 5,
 };
@@ -107,7 +109,20 @@ const SELECTORS = {
 // --- 3. 工具函數 ---
 const utils = {
     debounce: (func, delay) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => func(...a), delay); }; },
-    injectCSS: () => GM_addStyle('ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-statement-banner-renderer { display: none !important; }'),
+    injectCSS: () => {
+        const styleContent = 'ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-statement-banner-renderer { display: none !important; }';
+        // Using GM_addStyle for broad compatibility with userscript managers like Tampermonkey and Greasemonkey.
+        // As a fallback, or in environments where GM_addStyle might not be directly available or behaves differently (e.g., some Firefox setups),
+        // we append a <style> element directly to the document head.
+        if (typeof GM_addStyle === 'function') {
+            GM_addStyle(styleContent);
+        } else {
+            const style = document.createElement('style');
+            style.type = 'text/css';
+            style.appendChild(document.createTextNode(styleContent));
+            (document.head || document.documentElement).appendChild(style);
+        }
+    },
 
     unitMultiplier: (u) => {
         if (!u) return 1;
@@ -151,6 +166,24 @@ const utils = {
             return null;
         }
         return seconds;
+    },
+
+    parseTimeAgo: (text) => {
+        if (!text) return null;
+        const raw = text.toLowerCase();
+        const numMatch = raw.match(/([\d.]+)/);
+        if (!numMatch) return null;
+        const num = parseFloat(numMatch[1]);
+        if (isNaN(num)) return null;
+
+        if (raw.includes('minute') || raw.includes('分鐘')) return num;
+        if (raw.includes('hour') || raw.includes('小時')) return num * 60;
+        if (raw.includes('day') || raw.includes('天')) return num * 60 * 24;
+        if (raw.includes('week') || raw.includes('週')) return num * 60 * 24 * 7;
+        if (raw.includes('month') || raw.includes('月')) return num * 60 * 24 * 30; // Approximation
+        if (raw.includes('year') || raw.includes('年')) return num * 60 * 24 * 365; // Approximation
+
+        return null;
     },
 
     extractAriaTextForCounts(container) {
@@ -210,7 +243,7 @@ const Enhancer = {
         document.addEventListener('click', (e) => {
             if (!CONFIG.OPEN_IN_NEW_TAB) return;
             if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-            const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next, .yt-core-attributed-string__link, #subscribe-button';
+            const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next, .yt-core-attributed-string__link, #subscribe-button, .ytp-progress-bar, .ytp-chrome-bottom';
             if (e.target.closest(exclusions)) return;
 
             let targetLink = null;
@@ -228,7 +261,8 @@ const Enhancer = {
             if (!targetLink) return;
 
             try {
-                const isValidTarget = targetLink.href && (new URL(targetLink.href, location.origin)).hostname.includes('youtube.com');
+                const hostname = new URL(targetLink.href, location.origin).hostname;
+                const isValidTarget = targetLink.href && /(^|\.)youtube\.com$/.test(hostname);
                 if (isValidTarget) {
                     e.preventDefault();
                     e.stopImmediatePropagation();
@@ -334,6 +368,10 @@ const RuleEngine = {
                     return { state: State.KEEP };
                 }
                 case 'liveViewers': case 'viewCount': {
+                    // 新影片豁免期邏輯
+                    if (cachedData.timeAgoInMinutes !== null && cachedData.timeAgoInMinutes < (CONFIG.GRACE_PERIOD_HOURS * 60)) {
+                        return { state: State.KEEP }; // 在豁免期內，不進行觀看數過濾
+                    }
                     const count = condition.type === 'liveViewers' ? cachedData.liveViewers : cachedData.viewCount;
                     if (count === null) return container.tagName.includes('PLAYLIST') ? { state: State.KEEP } : { state: State.WAIT };
                     return count < condition.threshold ? { state: State.HIDE, reason: `${condition.type}: ${count} < ${condition.threshold}` } : { state: State.KEEP };
@@ -365,9 +403,11 @@ const RuleEngine = {
         const metadataTexts = [ ...Array.from(container.querySelectorAll('#metadata-line .inline-metadata-item, #metadata-line span.ytd-grid-video-renderer, .yt-content-metadata-view-model-wiz__metadata-text, .yt-content-metadata-view-model__metadata-text'), el => el.textContent), utils.extractAriaTextForCounts(container) ];
         data.liveViewers = null;
         data.viewCount = null;
+        data.timeAgoInMinutes = null;
         for (const text of metadataTexts) {
             if (data.liveViewers === null) data.liveViewers = utils.parseLiveViewers(text);
             if (data.viewCount === null) data.viewCount = utils.parseViewCount(text);
+            if (data.timeAgoInMinutes === null) data.timeAgoInMinutes = utils.parseTimeAgo(text);
         }
         data.isShorts = container.querySelector('a[href*="/shorts/"]') !== null;
 

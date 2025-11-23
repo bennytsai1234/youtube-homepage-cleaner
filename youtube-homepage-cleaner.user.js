@@ -171,6 +171,9 @@ const utils = {
     parseTimeAgo: (text) => {
         if (!text) return null;
         const raw = text.toLowerCase();
+
+        if (raw.includes('second') || raw.includes('秒')) return 0.1; // 視為極短時間
+
         const numMatch = raw.match(/([\d.]+)/);
         if (!numMatch) return null;
         const num = parseFloat(numMatch[1]);
@@ -370,7 +373,10 @@ const RuleEngine = {
                 case 'liveViewers': case 'viewCount': {
                     // 新影片豁免期邏輯
                     if (cachedData.timeAgoInMinutes !== null && cachedData.timeAgoInMinutes < (CONFIG.GRACE_PERIOD_HOURS * 60)) {
-                        return { state: State.KEEP }; // 在豁免期內，不進行觀看數過濾
+                        if (CONFIG.DEBUG_MODE) {
+                            console.log(`[Grace Period] Keeping video "${cachedData.title}" (${cachedData.timeAgoInMinutes} mins old)`);
+                        }
+                        return { state: State.KEEP }; 
                     }
                     const count = condition.type === 'liveViewers' ? cachedData.liveViewers : cachedData.viewCount;
                     if (count === null) return container.tagName.includes('PLAYLIST') ? { state: State.KEEP } : { state: State.WAIT };
@@ -498,6 +504,13 @@ const Main = {
             '4': { title: '👤 管理頻道黑名單', type: 'action', action: () => this._manageList('CHANNEL_BLACKLIST', '頻道') },
             '5': { title: '啟用「影片長度過濾」', type: 'toggle', config: 'ENABLE_DURATION_FILTER', afterAction: () => this.resetAndRescan() },
             '6': { title: '⏱️ 管理影片長度', type: 'action', action: () => this._manageDuration() },
+            '7': { 
+                title: () => `🛡️ 設定新影片豁免期 (目前: ${CONFIG.GRACE_PERIOD_HOURS} 小時)`, 
+                type: 'number', 
+                config: 'GRACE_PERIOD_HOURS', 
+                promptText: '請輸入新影片豁免期 (小時)\n在此時間內發布的影片將不受觀看數限制：', 
+                afterAction: () => this.resetAndRescan() 
+            },
             '0': { title: '⬅️ 返回主選單', type: 'back' }
         };
     },

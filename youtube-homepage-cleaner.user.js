@@ -55,6 +55,13 @@ const DEFAULT_CONFIG = {
     ENABLE_LOW_VIEW_FILTER: true,
     DEBUG_MODE: false,
     OPEN_IN_NEW_TAB: true, // 預設開啟強制新分頁
+    ENABLE_KEYWORD_FILTER: false, // 預設關閉關鍵字過濾
+    KEYWORD_BLACKLIST: [], // 預設空的關鍵字黑名單
+    ENABLE_CHANNEL_FILTER: false, // 預設關閉頻道過濾
+    CHANNEL_BLACKLIST: [], // 預設空的頻道黑名單
+    ENABLE_DURATION_FILTER: false, // 預設關閉長度過濾
+    DURATION_MIN: 0, // 最短影片長度(秒)，0為不限制
+    DURATION_MAX: 0, // 最長影片長度(秒)，0為不限制
 };
 
 const CONFIG = {
@@ -63,6 +70,13 @@ const CONFIG = {
     DEBUG_MODE: GM_getValue('debugMode', DEFAULT_CONFIG.DEBUG_MODE),
     OPEN_IN_NEW_TAB: GM_getValue('openInNewTab', DEFAULT_CONFIG.OPEN_IN_NEW_TAB),
     RULE_ENABLES: GM_getValue('ruleEnables', { ...DEFAULT_RULE_ENABLES }),
+    ENABLE_KEYWORD_FILTER: GM_getValue('enableKeywordFilter', DEFAULT_CONFIG.ENABLE_KEYWORD_FILTER),
+    KEYWORD_BLACKLIST: GM_getValue('keywordBlacklist', [ ...DEFAULT_CONFIG.KEYWORD_BLACKLIST ]),
+    ENABLE_CHANNEL_FILTER: GM_getValue('enableChannelFilter', DEFAULT_CONFIG.ENABLE_CHANNEL_FILTER),
+    CHANNEL_BLACKLIST: GM_getValue('channelBlacklist', [ ...DEFAULT_CONFIG.CHANNEL_BLACKLIST ]),
+    ENABLE_DURATION_FILTER: GM_getValue('enableDurationFilter', DEFAULT_CONFIG.ENABLE_DURATION_FILTER),
+    DURATION_MIN: GM_getValue('durationMin', DEFAULT_CONFIG.DURATION_MIN),
+    DURATION_MAX: GM_getValue('durationMax', DEFAULT_CONFIG.DURATION_MAX),
     DEBOUNCE_DELAY: 50,
     PERIODIC_INTERVAL: 2000, // 優化掃描頻率
     WAIT_MAX_RETRY: 5,
@@ -124,6 +138,21 @@ const utils = {
 
     parseLiveViewers: (text) => utils.parseNumeric(text, 'live'),
     parseViewCount: (text) => utils.parseNumeric(text, 'view'),
+
+    parseDuration: (text) => {
+        if (!text) return null;
+        const parts = text.trim().split(':').map(Number);
+        if (parts.some(isNaN)) return null;
+        let seconds = 0;
+        if (parts.length === 3) { // HH:MM:SS
+            seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+        } else if (parts.length === 2) { // MM:SS
+            seconds = parts[0] * 60 + parts[1];
+        } else {
+            return null;
+        }
+        return seconds;
+    },
 
     extractAriaTextForCounts(container) {
         const a1 = container.querySelector(':scope a#video-title-link[aria-label]');
@@ -265,6 +294,39 @@ const RuleEngine = {
             );
         }
 
+        if (CONFIG.ENABLE_KEYWORD_FILTER && CONFIG.KEYWORD_BLACKLIST.length > 0) {
+            const videoScope = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model, ytd-grid-video-renderer';
+            activeRules.push({
+                id: 'keyword_blacklist',
+                name: '關鍵字過濾',
+                scope: videoScope,
+                isConditional: true,
+                conditions: { any: [{ type: 'titleKeyword', keywords: CONFIG.KEYWORD_BLACKLIST }] }
+            });
+        }
+
+        if (CONFIG.ENABLE_CHANNEL_FILTER && CONFIG.CHANNEL_BLACKLIST.length > 0) {
+            const videoScope = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model, ytd-grid-video-renderer';
+            activeRules.push({
+                id: 'channel_blacklist',
+                name: '頻道過濾',
+                scope: videoScope,
+                isConditional: true,
+                conditions: { any: [{ type: 'channelName', channels: CONFIG.CHANNEL_BLACKLIST }] }
+            });
+        }
+
+        if (CONFIG.ENABLE_DURATION_FILTER && (CONFIG.DURATION_MIN > 0 || CONFIG.DURATION_MAX > 0)) {
+            const videoScope = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model, ytd-grid-video-renderer';
+            activeRules.push({
+                id: 'duration_filter',
+                name: '影片長度過濾',
+                scope: videoScope,
+                isConditional: true,
+                conditions: { any: [{ type: 'duration', min: CONFIG.DURATION_MIN, max: CONFIG.DURATION_MAX }] }
+            });
+        }
+
         activeRules.forEach(rule => {
             const scopes = rule.scope ? rule.scope.split(',') : [null];
             scopes.forEach(scope => {
@@ -290,6 +352,44 @@ const RuleEngine = {
                         if (condition.keyword.test(el.textContent)) {
                             return { state: State.HIDE, reason: `Text: "${el.textContent.trim()}"` };
                         }
+                    }
+                    return { state: State.KEEP };
+                }
+                case 'titleKeyword': {
+                    const titleEl = container.querySelector('#video-title');
+                    if (!titleEl?.textContent) return { state: State.KEEP };
+                    const title = titleEl.textContent.toLowerCase();
+                    for (const keyword of condition.keywords) {
+                        if (keyword && title.includes(keyword.toLowerCase())) {
+                            return { state: State.HIDE, reason: `Keyword: "${keyword}"` };
+                        }
+                    }
+                    return { state: State.KEEP };
+                }
+                case 'channelName': {
+                    const channelEl = container.querySelector('ytd-channel-name .yt-formatted-string, .ytd-channel-name a');
+                    if (!channelEl?.textContent) return { state: State.KEEP };
+                    const channelName = channelEl.textContent.trim().toLowerCase();
+                    for (const blockedChannel of condition.channels) {
+                        if (blockedChannel && channelName === blockedChannel.toLowerCase()) {
+                            return { state: State.HIDE, reason: `Channel: "${blockedChannel}"` };
+                        }
+                    }
+                    return { state: State.KEEP };
+                }
+                case 'duration': {
+                    const durationEl = container.querySelector('ytd-thumbnail-overlay-time-status-renderer');
+                    if (!durationEl?.textContent) {
+                        return container.querySelector('a[href*="/shorts/"]') ? { state: State.KEEP } : { state: State.WAIT };
+                    }
+                    const durationInSeconds = utils.parseDuration(durationEl.textContent);
+                    if (durationInSeconds === null) return { state: State.WAIT };
+
+                    if (condition.min > 0 && durationInSeconds < condition.min) {
+                        return { state: State.HIDE, reason: `Duration ${durationInSeconds}s < min ${condition.min}s` };
+                    }
+                    if (condition.max > 0 && durationInSeconds > condition.max) {
+                        return { state: State.HIDE, reason: `Duration ${durationInSeconds}s > max ${condition.max}s` };
                     }
                     return { state: State.KEEP };
                 }
@@ -426,20 +526,224 @@ const Main = {
         }
     },
 
+    // 通用黑名單管理
+    manageBlacklist(configKey, storageKey, itemName) {
+        const list = CONFIG[configKey];
+        let menuText = `【管理${itemName}黑名單】\n目前列表: ${list.length > 0 ? `\n[ ${list.join(', ')} ]` : '(無)'}\n\n`;
+        menuText += `1. ➕ 新增${itemName}\n`;
+        menuText += `2. 🗑️ 刪除${itemName}\n`;
+        menuText += '3. ❌ 清空列表\n';
+        menuText += '--------------------------\n';
+        menuText += '0. ⬅️ 返回上一層';
+
+        const choice = prompt(menuText);
+        if (choice === null) return;
+
+        const index = parseInt(choice.trim(), 10);
+        if (isNaN(index)) {
+             setTimeout(() => this.manageBlacklist(configKey, storageKey, itemName), 100);
+             return;
+        }
+
+        switch (index) {
+            case 1: { // 新增
+                const newItems = prompt(`請輸入要加入黑名單的${itemName}，多個請用逗號 (,) 分隔:`);
+                if (newItems) {
+                    const toAdd = newItems.split(',').map(item => item.trim()).filter(item => item && !list.includes(item));
+                    if (toAdd.length > 0) {
+                        CONFIG[configKey].push(...toAdd);
+                        GM_setValue(storageKey, CONFIG[configKey]);
+                        this.resetAndRescan(`${itemName}黑名單已更新`);
+                    }
+                }
+                break;
+            }
+            case 2: { // 刪除
+                if (list.length === 0) {
+                    alert('目前列表為空。');
+                    break;
+                }
+                const toDelete = prompt(`請輸入要從黑名單中刪除的${itemName}:\n[ ${list.join(', ')} ]`);
+                if (toDelete) {
+                    const idx = list.findIndex(item => item.toLowerCase() === toDelete.trim().toLowerCase());
+                    if (idx > -1) {
+                        CONFIG[configKey].splice(idx, 1);
+                        GM_setValue(storageKey, CONFIG[configKey]);
+                        this.resetAndRescan(`${itemName} "${toDelete}" 已被移除`);
+                    } else {
+                        alert(`${itemName} "${toDelete}" 不在列表中。`);
+                    }
+                }
+                break;
+            }
+            case 3: { // 清空
+                if (confirm(`⚠️ 確定要清空所有${itemName}黑名單嗎？`)) {
+                    CONFIG[configKey] = [];
+                    GM_setValue(storageKey, CONFIG[configKey]);
+                    this.resetAndRescan(`${itemName}黑名單已清空`);
+                    alert(`✅ ${itemName}黑名單已清空。`);
+                }
+                break;
+            }
+            case 0: { // 返回
+                this.openAdvancedFilterMenu();
+                return;
+            }
+        }
+        setTimeout(() => this.manageBlacklist(configKey, storageKey, itemName), 100);
+    },
+
+    // 管理影片長度過濾
+    manageDurationFilter() {
+        const min = CONFIG.DURATION_MIN;
+        const max = CONFIG.DURATION_MAX;
+        let menuText = `【管理影片長度過濾】\n過濾掉長度在此範圍之外的影片。\n(0 代表不限制)\n\n`;
+        menuText += `1. ⏱️ 設定最短長度 (目前: ${min > 0 ? `${min / 60} 分鐘` : '無'})
+`;
+        menuText += `2. ⏱️ 設定最長長度 (目前: ${max > 0 ? `${max / 60} 分鐘` : '無'})
+`;
+        menuText += `3. ❌ 重設長度限制\n`;
+        menuText += '--------------------------\n';
+        menuText += '0. ⬅️ 返回上一層';
+
+        const choice = prompt(menuText);
+        if (choice === null) return;
+
+        const index = parseInt(choice.trim(), 10);
+        if (isNaN(index)) {
+             setTimeout(() => this.manageDurationFilter(), 100);
+             return;
+        }
+
+        const parseMinutes = (input, type) => {
+            if (input === null) return;
+            const minutes = parseFloat(input);
+            if (isNaN(minutes) || minutes < 0) {
+                alert('請輸入有效的數字 (分鐘)。');
+                return;
+            }
+            const seconds = Math.floor(minutes * 60);
+            if (type === 'min') {
+                CONFIG.DURATION_MIN = seconds;
+                GM_setValue('durationMin', seconds);
+            } else {
+                CONFIG.DURATION_MAX = seconds;
+                GM_setValue('durationMax', seconds);
+            }
+            this.resetAndRescan('影片長度過濾已更新');
+        };
+
+        switch (index) {
+            case 1: { // 設定最短
+                const input = prompt('請輸入最短影片長度 (分鐘)。\n(例如：輸入 5 過濾掉短於 5 分鐘的影片)', min > 0 ? min / 60 : 0);
+                parseMinutes(input, 'min');
+                break;
+            }
+            case 2: { // 設定最長
+                const input = prompt('請輸入最長影片長度 (分鐘)。\n(例如：輸入 30 過濾掉長於 30 分鐘的影片)', max > 0 ? max / 60 : 0);
+                parseMinutes(input, 'max');
+                break;
+            }
+            case 3: { // 重設
+                if (confirm('⚠️ 確定要重設所有長度限制嗎？')) {
+                    CONFIG.DURATION_MIN = DEFAULT_CONFIG.DURATION_MIN;
+                    CONFIG.DURATION_MAX = DEFAULT_CONFIG.DURATION_MAX;
+                    GM_setValue('durationMin', CONFIG.DURATION_MIN);
+                    GM_setValue('durationMax', CONFIG.DURATION_MAX);
+                    this.resetAndRescan('影片長度過濾已重設');
+                    alert('✅ 影片長度過濾已重設。');
+                }
+                break;
+            }
+            case 0: { // 返回
+                this.openAdvancedFilterMenu();
+                return;
+            }
+        }
+        setTimeout(() => this.manageDurationFilter(), 100);
+    },
+
+    // 顯示進階過濾選單
+    openAdvancedFilterMenu() {
+        const s = (val) => val ? '✅' : '❌';
+        let menuText = '【 進階過濾設定 】\n\n';
+        menuText += `1. ${s(CONFIG.ENABLE_KEYWORD_FILTER)} 啟用「關鍵字過濾」\n`;
+        menuText += '2. 📖 管理關鍵字黑名單...\n';
+        menuText += '--------------------------\n';
+        menuText += `3. ${s(CONFIG.ENABLE_CHANNEL_FILTER)} 啟用「頻道過濾」\n`;
+        menuText += '4. 👤 管理頻道黑名單...\n';
+        menuText += '--------------------------\n';
+        menuText += `5. ${s(CONFIG.ENABLE_DURATION_FILTER)} 啟用「影片長度過濾」\n`;
+        menuText += '6. ⏱️ 管理影片長度...\n';
+        menuText += '--------------------------\n';
+        menuText += '0. ⬅️ 返回主選單';
+
+        const choice = prompt(menuText);
+        if (choice === null) return;
+        const index = parseInt(choice.trim(), 10);
+        if (isNaN(index)) {
+             setTimeout(() => this.openAdvancedFilterMenu(), 100);
+             return;
+        }
+
+        switch (index) {
+            case 1: { // 開關關鍵字過濾
+                CONFIG.ENABLE_KEYWORD_FILTER = !CONFIG.ENABLE_KEYWORD_FILTER;
+                GM_setValue('enableKeywordFilter', CONFIG.ENABLE_KEYWORD_FILTER);
+                this.resetAndRescan(`關鍵字過濾已 ${CONFIG.ENABLE_KEYWORD_FILTER ? '啟用' : '停用'}`);
+                setTimeout(() => this.openAdvancedFilterMenu(), 100);
+                break;
+            }
+            case 2: { // 管理關鍵字
+                this.manageBlacklist('KEYWORD_BLACKLIST', 'keywordBlacklist', '關鍵字');
+                break;
+            }
+            case 3: { // 開關頻道過濾
+                CONFIG.ENABLE_CHANNEL_FILTER = !CONFIG.ENABLE_CHANNEL_FILTER;
+                GM_setValue('enableChannelFilter', CONFIG.ENABLE_CHANNEL_FILTER);
+                this.resetAndRescan(`頻道過濾已 ${CONFIG.ENABLE_CHANNEL_FILTER ? '啟用' : '停用'}`);
+                setTimeout(() => this.openAdvancedFilterMenu(), 100);
+                break;
+            }
+            case 4: { // 管理頻道
+                this.manageBlacklist('CHANNEL_BLACKLIST', 'channelBlacklist', '頻道');
+                break;
+            }
+            case 5: { // 開關長度過濾
+                CONFIG.ENABLE_DURATION_FILTER = !CONFIG.ENABLE_DURATION_FILTER;
+                GM_setValue('enableDurationFilter', CONFIG.ENABLE_DURATION_FILTER);
+                this.resetAndRescan(`影片長度過濾已 ${CONFIG.ENABLE_DURATION_FILTER ? '啟用' : '停用'}`);
+                setTimeout(() => this.openAdvancedFilterMenu(), 100);
+                break;
+            }
+            case 6: { // 管理長度
+                this.manageDurationFilter();
+                break;
+            }
+            case 0: { // 返回主選單
+                this.toggleMainMenu();
+                break;
+            }
+        }
+    },
+
     // 顯示主選單
     toggleMainMenu() {
         const s = (val) => val ? '✅' : '❌';
 
         let menuText = '【 YouTube 淨化大師 - 設定 】\n\n';
-        menuText += '1. 📂 設定詳細過濾規則 (進入子選單)...\n';
+        menuText += '1. 📂 設定詳細過濾規則 (進入子選單)...
+';
         menuText += '--------------------------\n';
         menuText += `2. ${s(CONFIG.ENABLE_LOW_VIEW_FILTER)} 啟用「低觀看數過濾」\n`;
-        menuText += `3. 🔢 修改過濾閾值 (目前: ${CONFIG.LOW_VIEW_THRESHOLD})\n`;
+        menuText += `3. 🔢 修改過濾閾值 (目前: ${CONFIG.LOW_VIEW_THRESHOLD})
+`;
+        menuText += '4. 🚫 進階過濾設定...\n';
         menuText += '--------------------------\n';
-        menuText += `4. ${s(CONFIG.OPEN_IN_NEW_TAB)} 強制新分頁開啟影片 (可能影響速度)\n`;
-        menuText += `5. ${s(CONFIG.DEBUG_MODE)} Debug 模式\n`;
+        menuText += `5. ${s(CONFIG.OPEN_IN_NEW_TAB)} 強制新分頁開啟影片 (可能影響速度)\n`;
+        menuText += `6. ${s(CONFIG.DEBUG_MODE)} Debug 模式\n`;
         menuText += '--------------------------\n';
-        menuText += `6. 🔄 恢復預設設定\n`;
+        menuText += `7. 🔄 恢復預設設定\n`;
 
         menuText += '\n請輸入數字：';
 
@@ -474,31 +778,49 @@ const Main = {
                 }
                 break;
             }
-            case 4: {
+            case 4: { // 進階過濾設定
+                this.openAdvancedFilterMenu();
+                break;
+            }
+            case 5: {
                 CONFIG.OPEN_IN_NEW_TAB = !CONFIG.OPEN_IN_NEW_TAB;
                 GM_setValue('openInNewTab', CONFIG.OPEN_IN_NEW_TAB);
                 alert(`強制新分頁開啟已${CONFIG.OPEN_IN_NEW_TAB ? '啟用' : '停用'}。\n(停用此功能可獲得較佳的頁面加載速度)`);
                 break;
             }
-            case 5: {
+            case 6: {
                 CONFIG.DEBUG_MODE = !CONFIG.DEBUG_MODE;
                 GM_setValue('debugMode', CONFIG.DEBUG_MODE);
                 alert(`Debug 模式已${CONFIG.DEBUG_MODE ? '啟用' : '停用'}。\n請按 F12 開啟 Console 查看日誌。`);
                 this.resetAndRescan('Debug 設定變更');
                 break;
             }
-            case 6: {
+            case 7: {
                 if (confirm('⚠️ 確定要將所有設定（包含規則、閾值）恢復為預設值嗎？')) {
                     CONFIG.RULE_ENABLES = { ...DEFAULT_RULE_ENABLES };
                     CONFIG.LOW_VIEW_THRESHOLD = DEFAULT_CONFIG.LOW_VIEW_THRESHOLD;
                     CONFIG.ENABLE_LOW_VIEW_FILTER = DEFAULT_CONFIG.ENABLE_LOW_VIEW_FILTER;
                     CONFIG.DEBUG_MODE = DEFAULT_CONFIG.DEBUG_MODE;
                     CONFIG.OPEN_IN_NEW_TAB = DEFAULT_CONFIG.OPEN_IN_NEW_TAB;
+                    CONFIG.ENABLE_KEYWORD_FILTER = DEFAULT_CONFIG.ENABLE_KEYWORD_FILTER;
+                    CONFIG.KEYWORD_BLACKLIST = [ ...DEFAULT_CONFIG.KEYWORD_BLACKLIST ];
+                    CONFIG.ENABLE_CHANNEL_FILTER = DEFAULT_CONFIG.ENABLE_CHANNEL_FILTER;
+                    CONFIG.CHANNEL_BLACKLIST = [ ...DEFAULT_CONFIG.CHANNEL_BLACKLIST ];
+                    CONFIG.ENABLE_DURATION_FILTER = DEFAULT_CONFIG.ENABLE_DURATION_FILTER;
+                    CONFIG.DURATION_MIN = DEFAULT_CONFIG.DURATION_MIN;
+                    CONFIG.DURATION_MAX = DEFAULT_CONFIG.DURATION_MAX;
                     GM_setValue('ruleEnables', CONFIG.RULE_ENABLES);
                     GM_setValue('lowViewThreshold', CONFIG.LOW_VIEW_THRESHOLD);
                     GM_setValue('enableLowViewFilter', CONFIG.ENABLE_LOW_VIEW_FILTER);
                     GM_setValue('debugMode', CONFIG.DEBUG_MODE);
                     GM_setValue('openInNewTab', CONFIG.OPEN_IN_NEW_TAB);
+                    GM_setValue('enableKeywordFilter', CONFIG.ENABLE_KEYWORD_FILTER);
+                    GM_setValue('keywordBlacklist', CONFIG.KEYWORD_BLACKLIST);
+                    GM_setValue('enableChannelFilter', CONFIG.ENABLE_CHANNEL_FILTER);
+                    GM_setValue('channelBlacklist', CONFIG.CHANNEL_BLACKLIST);
+                    GM_setValue('enableDurationFilter', CONFIG.ENABLE_DURATION_FILTER);
+                    GM_setValue('durationMin', CONFIG.DURATION_MIN);
+                    GM_setValue('durationMax', CONFIG.DURATION_MAX);
                     this.resetAndRescan('系統已恢復預設值');
                     alert('✅ 所有設定已恢復預設值。');
                 }

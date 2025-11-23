@@ -197,4 +197,413 @@ const logger = {
         }, {});
         const summaryString = Object.entries(summary).map(([name, count]) => `${name}: ${count}`).join(', ');
         console.groupCollapsed(`%c${this.prefix} [HIDE BATCH] Hiding ${this._batch.length} items from ${this._batch[0].source} | ${summaryString}`, this.style('#e74c3c'));
-        this._batch.forEach(item => console.log(`Rule:
+        this._batch.forEach(item => console.log(`Rule:"${item.ruleName}" | Reason:${item.reason}`, item.element));
+        console.groupEnd();
+    },
+
+    logStart: () => console.log(`%c🚀 ${SCRIPT_INFO.name} v${SCRIPT_INFO.version} 啟動. (Debug: ${CONFIG.DEBUG_MODE})`, 'color:#3498db; font-weight:bold; font-size: 1.2em;'),
+};
+
+// --- 5. 功能增強模組 (點擊優化) ---
+const Enhancer = {
+    initGlobalClickListener() {
+        document.addEventListener('click', (e) => {
+            if (!CONFIG.OPEN_IN_NEW_TAB) return;
+            if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+            const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next, .yt-core-attributed-string__link, #subscribe-button';
+            if (e.target.closest(exclusions)) return;
+
+            let targetLink = null;
+            const previewPlayer = e.target.closest(SELECTORS.INLINE_PREVIEW_PLAYER);
+
+            if (previewPlayer) {
+                 targetLink = utils.findPrimaryLink(previewPlayer) || utils.findPrimaryLink(previewPlayer.closest(SELECTORS.CLICKABLE_CONTAINERS.join(',')));
+            } else {
+                 const container = e.target.closest(SELECTORS.CLICKABLE_CONTAINERS.join(', '));
+                 if (!container) return;
+                 const channelLink = e.target.closest('a#avatar-link, .ytd-channel-name a, a[href^="/@"], a[href^="/channel/"]');
+                 targetLink = channelLink?.href ? channelLink : utils.findPrimaryLink(container);
+            }
+
+            if (!targetLink) return;
+
+            try {
+                const isValidTarget = targetLink.href && (new URL(targetLink.href, location.origin)).hostname.includes('youtube.com');
+                if (isValidTarget) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    window.open(targetLink.href, '_blank');
+                }
+            } catch (err) {}
+        }, { capture: true });
+    }
+};
+
+// --- 6. 核心規則引擎 ---
+const RuleEngine = {
+    ruleCache: new Map(),
+    globalRules: [],
+    _elementDataCache: new WeakMap(),
+
+    init() {
+        this.ruleCache.clear();
+        this.globalRules = [];
+        this._elementDataCache = new WeakMap();
+
+        const activeRules = this._buildBaseRules().filter(rule => CONFIG.RULE_ENABLES[rule.id] !== false);
+        this._addConditionalRules(activeRules);
+        this._populateRuleCaches(activeRules);
+    },
+
+    _buildBaseRules() {
+        return [
+            { id: 'ad_sponsor', name: '廣告/促銷', conditions: { any: [{ type: 'selector', value: '[aria-label*="廣告"], [aria-label*="Sponsor"], [aria-label="贊助商廣告"], ytd-ad-slot-renderer' }] } },
+            { id: 'members_only', name: '會員專屬', conditions: { any: [ { type: 'selector', value: '[aria-label*="會員專屬"]' }, { type: 'text', selector: '.badge-shape-wiz__text, .yt-badge-shape__text', keyword: /頻道會員專屬|Members only/i } ] } },
+            { id: 'shorts_item', name: 'Shorts (單個)', conditions: { any: [{ type: 'selector', value: 'a[href*="/shorts/"]' }] } },
+            { id: 'mix_only', name: '合輯 (Mix)', conditions: { any: [ { type: 'text', selector: '.badge-shape-wiz__text, ytd-thumbnail-overlay-side-panel-renderer, .yt-badge-shape__text', keyword: /(^|\s)(合輯|Mix)(\s|$)/i }, { type: 'selector', value: 'a[aria-label*="合輯"], a[aria-label*="Mix"]' }, { type: 'text', selector: '#video-title, .yt-lockup-metadata-view-model__title', keyword: /^(合輯|Mix)[\s-–]/i } ] } },
+            { id: 'premium_banner', name: 'Premium 推廣', scope: 'ytd-statement-banner-renderer', conditions: { any: [{ type: 'selector', value: 'ytd-button-renderer' }] } },
+            { id: 'news_block', name: '新聞區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /新聞快報|Breaking News|ニュース/i }] } },
+            { id: 'shorts_block', name: 'Shorts 區塊', scope: 'ytd-rich-shelf-renderer, ytd-reel-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /^Shorts$/i }] } },
+            { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /貼文|Posts|投稿|Publicaciones|最新 YouTube 貼文/i }] } },
+            { id: 'explore_topics', name: '探索更多主題', scope: 'ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /探索更多主題|Explore more topics/i }] } },
+            { id: 'shorts_grid_shelf', name: 'Shorts 區塊 (Grid)', scope: 'grid-shelf-view-model', conditions: { any: [{ type: 'text', selector: 'h2.shelf-header-layout-wiz__title', keyword: /^Shorts$/i }] } },
+            { id: 'movies_shelf', name: '電影推薦區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /為你推薦的特選電影|featured movies/i }, { type: 'text', selector: 'p.ytd-badge-supported-renderer', keyword: /YouTube 精選/i } ] } },
+            { id: 'youtube_featured_shelf', name: 'YouTube 精選區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [ { type: 'text', selector: '.yt-shelf-header-layout__sublabel', keyword: /YouTube 精選/i } ] } },
+            { id: 'popular_gaming_shelf', name: '熱門遊戲區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /^熱門遊戲直播$/i }] } },
+            { id: 'more_from_game_shelf', name: '「更多相關內容」區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#subtitle', keyword: /^更多此遊戲相關內容$/i }] } },
+            { id: 'trending_playlist', name: '發燒影片/熱門內容', scope: 'ytd-rich-item-renderer, yt-lockup-view-model', conditions: { any: [{ type: 'text', selector: 'h3 a, #video-title', keyword: /發燒影片|Trending/i }] } },
+            { id: 'inline_survey', name: '意見調查問卷', scope: 'ytd-rich-section-renderer', conditions: { any: [{ type: 'selector', value: 'ytd-inline-survey-renderer' }] } },
+            { id: 'clarify_box', name: '資訊面板 (Wiki)', scope: 'ytd-info-panel-container-renderer', conditions: { any: [{ type: 'selector', value: 'h2.header-left-items' }] } },
+        ];
+    },
+
+    _addConditionalRules(activeRules) {
+        const videoScope = 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model, ytd-grid-video-renderer';
+        if (CONFIG.ENABLE_LOW_VIEW_FILTER) {
+            activeRules.push(
+                { id: 'low_viewer_live', name: '低觀眾直播', scope: videoScope, conditions: { any: [{ type: 'liveViewers', threshold: CONFIG.LOW_VIEW_THRESHOLD }] } },
+                { id: 'low_view_video', name: '低觀看影片', scope: videoScope, conditions: { any: [{ type: 'viewCount', threshold: CONFIG.LOW_VIEW_THRESHOLD }] } }
+            );
+        }
+        if (CONFIG.ENABLE_KEYWORD_FILTER && CONFIG.KEYWORD_BLACKLIST.length > 0) {
+            activeRules.push({ id: 'keyword_blacklist', name: '關鍵字過濾', scope: videoScope, conditions: { any: [{ type: 'titleKeyword', keywords: CONFIG.KEYWORD_BLACKLIST }] } });
+        }
+        if (CONFIG.ENABLE_CHANNEL_FILTER && CONFIG.CHANNEL_BLACKLIST.length > 0) {
+            activeRules.push({ id: 'channel_blacklist', name: '頻道過濾', scope: videoScope, conditions: { any: [{ type: 'channelName', channels: CONFIG.CHANNEL_BLACKLIST }] } });
+        }
+        if (CONFIG.ENABLE_DURATION_FILTER && (CONFIG.DURATION_MIN > 0 || CONFIG.DURATION_MAX > 0)) {
+            activeRules.push({ id: 'duration_filter', name: '影片長度過濾', scope: videoScope, conditions: { any: [{ type: 'duration', min: CONFIG.DURATION_MIN, max: CONFIG.DURATION_MAX }] } });
+        }
+    },
+
+    _populateRuleCaches(rulesToPopulate) {
+        rulesToPopulate.forEach(rule => {
+            const scopes = rule.scope ? rule.scope.split(',') : [null];
+            scopes.forEach(scope => {
+                const target = scope ? scope.trim().toUpperCase() : 'GLOBAL';
+                if (target === 'GLOBAL') {
+                    this.globalRules.push(rule);
+                } else {
+                    if (!this.ruleCache.has(target)) this.ruleCache.set(target, []);
+                    this.ruleCache.get(target).push(rule);
+                }
+            });
+        });
+    },
+
+    checkCondition(container, condition) {
+        const cachedData = this._getElementData(container);
+        try {
+            switch (condition.type) {
+                case 'selector': return container.querySelector(`:scope ${condition.value}`) ? { state: State.HIDE, reason: `Selector: ${condition.value}` } : { state: State.KEEP };
+                case 'text':
+                    for (const el of container.querySelectorAll(`:scope ${condition.selector}`)) {
+                        if (condition.keyword.test(el.textContent)) return { state: State.HIDE, reason: `Text: "${el.textContent.trim()}"` };
+                    }
+                    return { state: State.KEEP };
+                case 'titleKeyword':
+                    if (!cachedData.title) return { state: State.KEEP };
+                    return condition.keywords.some(keyword => keyword && cachedData.title.includes(keyword.toLowerCase())) ? { state: State.HIDE, reason: `Keyword: "${condition.keywords.find(kw => cachedData.title.includes(kw.toLowerCase()))}"` } : { state: State.KEEP };
+                case 'channelName':
+                    if (!cachedData.channelName) return { state: State.KEEP };
+                    return condition.channels.some(blocked => blocked && cachedData.channelName === blocked.toLowerCase()) ? { state: State.HIDE, reason: `Channel: "${condition.channels.find(cn => cachedData.channelName === cn.toLowerCase())}"` } : { state: State.KEEP };
+                case 'duration': {
+                    if (cachedData.durationInSeconds === null) return cachedData.isShorts ? { state: State.KEEP } : { state: State.WAIT };
+                    if (condition.min > 0 && cachedData.durationInSeconds < condition.min) return { state: State.HIDE, reason: `Duration ${cachedData.durationInSeconds}s < min ${condition.min}s` };
+                    if (condition.max > 0 && cachedData.durationInSeconds > condition.max) return { state: State.HIDE, reason: `Duration ${cachedData.durationInSeconds}s > max ${condition.max}s` };
+                    return { state: State.KEEP };
+                }
+                case 'liveViewers': case 'viewCount': {
+                    const count = condition.type === 'liveViewers' ? cachedData.liveViewers : cachedData.viewCount;
+                    if (count === null) return container.tagName.includes('PLAYLIST') ? { state: State.KEEP } : { state: State.WAIT };
+                    return count < condition.threshold ? { state: State.HIDE, reason: `${condition.type}: ${count} < ${condition.threshold}` } : { state: State.KEEP };
+                }
+                default: return { state: State.KEEP };
+            }
+        } catch (e) { return { state: State.KEEP }; }
+    },
+
+    checkRule(container, rule) {
+        if (rule.scope && !container.matches(rule.scope)) return { state: State.KEEP };
+        let requiresWait = false;
+        for (const condition of rule.conditions.any) {
+            const result = this.checkCondition(container, condition);
+            if (result.state === State.HIDE) return { ...result, ruleId: rule.id };
+            if (result.state === State.WAIT) requiresWait = true;
+        }
+        return requiresWait ? { state: State.WAIT } : { state: State.KEEP };
+    },
+
+    _getElementData(container) {
+        if (this._elementDataCache.has(container)) return this._elementDataCache.get(container);
+
+        const data = {};
+        data.title = container.querySelector('#video-title')?.textContent?.toLowerCase() || '';
+        data.channelName = container.querySelector('ytd-channel-name .yt-formatted-string, .ytd-channel-name a')?.textContent?.trim()?.toLowerCase() || '';
+        const durationEl = container.querySelector('ytd-thumbnail-overlay-time-status-renderer, span.ytd-thumbnail-overlay-time-status-renderer');
+        data.durationInSeconds = utils.parseDuration(durationEl?.textContent);
+        const metadataTexts = [ ...Array.from(container.querySelectorAll('#metadata-line .inline-metadata-item, #metadata-line span.ytd-grid-video-renderer, .yt-content-metadata-view-model-wiz__metadata-text, .yt-content-metadata-view-model__metadata-text'), el => el.textContent), utils.extractAriaTextForCounts(container) ];
+        data.liveViewers = null;
+        data.viewCount = null;
+        for (const text of metadataTexts) {
+            if (data.liveViewers === null) data.liveViewers = utils.parseLiveViewers(text);
+            if (data.viewCount === null) data.viewCount = utils.parseViewCount(text);
+        }
+        data.isShorts = container.querySelector('a[href*="/shorts/"]') !== null;
+
+        this._elementDataCache.set(container, data);
+        return data;
+    },
+
+    processContainer(container, source) {
+        if (container.hasAttribute(ATTRS.PROCESSED)) return;
+        const relevantRules = (this.ruleCache.get(container.tagName) || []).concat(this.globalRules);
+        let finalState = State.KEEP;
+
+        for (const rule of relevantRules) {
+            const result = this.checkRule(container, rule);
+            if (result.state === State.HIDE) {
+                let finalTarget = container.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, ytd-grid-video-renderer') || container;
+                finalTarget.style.setProperty('display', 'none', 'important');
+                finalTarget.setAttribute(ATTRS.PROCESSED, 'hidden');
+                finalTarget.setAttribute(ATTRS.HIDDEN_REASON, result.ruleId);
+                logger.hide(source, rule.name, result.reason, finalTarget);
+                return;
+            }
+            if (result.state === State.WAIT) finalState = State.WAIT;
+        }
+
+        if (finalState === State.WAIT) {
+            const count = +(container.getAttribute(ATTRS.WAIT_COUNT) || 0) + 1;
+            if (count >= CONFIG.WAIT_MAX_RETRY) container.setAttribute(ATTRS.PROCESSED, 'checked-wait-expired');
+            else container.setAttribute(ATTRS.WAIT_COUNT, String(count));
+        } else {
+            container.setAttribute(ATTRS.PROCESSED, 'checked');
+        }
+    }
+};
+
+// --- 7. 主控台與菜單系統 ---
+const Main = {
+    menuHandle: null,
+    menuStructure: null,
+
+    scanPage: (source) => {
+        logger.startBatch();
+        document.querySelectorAll(SELECTORS.COMBINED_SELECTOR).forEach(el => RuleEngine.processContainer(el, source));
+        logger.flushBatch();
+    },
+
+    resetAndRescan(message) {
+        logger.info(message);
+        document.querySelectorAll(`[${ATTRS.PROCESSED}]`).forEach(el => {
+            el.style.display = '';
+            el.removeAttribute(ATTRS.PROCESSED);
+            el.removeAttribute(ATTRS.HIDDEN_REASON);
+            el.removeAttribute(ATTRS.WAIT_COUNT);
+        });
+        RuleEngine.init();
+        Main.scanPage('settings-changed');
+    },
+
+    _buildMenu() {
+        this.menuStructure = {
+            title: '【 YouTube 淨化大師 - 設定 】',
+            items: {
+                '1': { title: '📂 設定詳細過濾規則', type: 'submenu', getItems: () => this._buildRuleSubmenu() },
+                '2': { title: '啟用「低觀看數過濾」', type: 'toggle', config: 'ENABLE_LOW_VIEW_FILTER', afterAction: () => this.resetAndRescan() },
+                '3': { title: () => `🔢 修改過濾閾值 (目前: ${CONFIG.LOW_VIEW_THRESHOLD})`, type: 'number', config: 'LOW_VIEW_THRESHOLD', promptText: '請輸入新的過濾閾值', afterAction: () => this.resetAndRescan() },
+                '4': { title: '🚫 進階過濾設定', type: 'submenu', items: this._buildAdvancedSubmenu() },
+                '5': { title: '強制新分頁開啟影片', type: 'toggle', config: 'OPEN_IN_NEW_TAB' },
+                '6': { title: 'Debug 模式', type: 'toggle', config: 'DEBUG_MODE', afterAction: () => this.resetAndRescan() },
+                '7': { title: '🔄 恢復預設設定', type: 'action', action: () => { if (confirm('⚠️ 確定要恢復預設值嗎？')) this._resetAllToDefaults(); } }
+            }
+        };
+    },
+
+    _buildRuleSubmenu() {
+        const items = RuleEngine._buildBaseRules().reduce((acc, rule, index) => {
+            acc[index + 1] = { title: rule.name, type: 'toggle', config: `RULE_ENABLES.${rule.id}`, afterAction: () => this.resetAndRescan() };
+            return acc;
+        }, {});
+        items['0'] = { title: '⬅️ 返回主選單', type: 'back' };
+        return items;
+    },
+
+    _buildAdvancedSubmenu() {
+        return {
+            '1': { title: '啟用「關鍵字過濾」', type: 'toggle', config: 'ENABLE_KEYWORD_FILTER', afterAction: () => this.resetAndRescan() },
+            '2': { title: '📖 管理關鍵字黑名單', type: 'action', action: () => this._manageList('KEYWORD_BLACKLIST', '關鍵字') },
+            '3': { title: '啟用「頻道過濾」', type: 'toggle', config: 'ENABLE_CHANNEL_FILTER', afterAction: () => this.resetAndRescan() },
+            '4': { title: '👤 管理頻道黑名單', type: 'action', action: () => this._manageList('CHANNEL_BLACKLIST', '頻道') },
+            '5': { title: '啟用「影片長度過濾」', type: 'toggle', config: 'ENABLE_DURATION_FILTER', afterAction: () => this.resetAndRescan() },
+            '6': { title: '⏱️ 管理影片長度', type: 'action', action: () => this._manageDuration() },
+            '0': { title: '⬅️ 返回主選單', type: 'back' }
+        };
+    },
+
+    _renderMenu(menuNode) {
+        let text = `${menuNode.title}\n\n`;
+        const items = typeof menuNode.getItems === 'function' ? menuNode.getItems() : menuNode.items;
+        const s = (val) => val ? '✅' : '❌';
+        const separator = '--------------------------\n';
+
+        Object.keys(items).forEach(key => {
+            if (menuNode === this.menuStructure && ['2', '5', '7'].includes(key)) text += separator;
+            if (key === '0' && menuNode !== this.menuStructure) text += separator;
+
+            const item = items[key];
+            let title = typeof item.title === 'function' ? item.title() : item.title;
+
+            if (item.type === 'toggle') {
+                const keys = item.config.split('.');
+                const value = keys.length > 1 ? CONFIG[keys[0]][keys[1]] : CONFIG[keys[0]];
+                title = `${s(value)} ${title}`;
+            }
+            text += `${key}. ${title}\n`;
+        });
+
+        const choice = prompt(text);
+        if (choice === null) return;
+
+        const selected = items[choice.trim()];
+        if (!selected) { alert('❌ 無效的選項'); return setTimeout(() => this._renderMenu(menuNode), 50); }
+
+        let nextMenu = menuNode;
+        switch (selected.type) {
+            case 'submenu': selected.parent = menuNode; nextMenu = selected; break;
+            case 'toggle': {
+                const keys = selected.config.split('.');
+                const isNested = keys.length > 1;
+                const value = isNested ? !CONFIG[keys[0]][keys[1]] : !CONFIG[keys[0]];
+                if (isNested) { CONFIG[keys[0]][keys[1]] = value; GM_setValue(keys[0].toLowerCase(), CONFIG[keys[0]]); }
+                else { CONFIG[keys[0]] = value; GM_setValue(selected.config.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`), value); }
+                if (selected.afterAction) selected.afterAction();
+                break;
+            }
+            case 'number': {
+                const currentVal = CONFIG[selected.config];
+                const input = prompt(selected.promptText, currentVal);
+                if (input !== null) {
+                    const newVal = parseInt(input, 10);
+                    if (!isNaN(newVal) && newVal >= 0) { CONFIG[selected.config] = newVal; GM_setValue(selected.config.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`), newVal); if (selected.afterAction) selected.afterAction(); }
+                    else { alert('❌ 請輸入有效的正整數。'); }
+                }
+                break;
+            }
+            case 'action': nextMenu = selected.action() || menuNode; break;
+            case 'back': nextMenu = menuNode.parent || menuNode; break;
+        }
+        if (nextMenu) setTimeout(() => this._renderMenu(nextMenu), 50);
+    },
+
+    _manageList(configKey, itemName) {
+        const list = CONFIG[configKey];
+        const text = `【管理${itemName}黑名單】\n目前: ${list.length > 0 ? `[ ${list.join(', ')} ]` : '(無)'}\n\n1.新增, 2.刪除, 3.清空, 0.返回`;
+        const choice = parseInt(prompt(text), 10);
+
+        switch (choice) {
+            case 1: {
+                const items = prompt(`輸入要新增的${itemName} (用逗號分隔)`);
+                if (items) {
+                    const toAdd = items.split(',').map(i => i.trim()).filter(i => i && !list.includes(i));
+                    if (toAdd.length > 0) { list.push(...toAdd); this.resetAndRescan(); }
+                }
+                break;
+            }
+            case 2: {
+                const item = prompt(`輸入要刪除的${itemName}:\n[ ${list.join(', ')} ]`);
+                if (item) {
+                    const idx = list.findIndex(i => i.toLowerCase() === item.trim().toLowerCase());
+                    if (idx > -1) { list.splice(idx, 1); this.resetAndRescan(); } else { alert('項目不存在'); }
+                }
+                break;
+            }
+            case 3: if (confirm(`⚠️ 確定要清空所有${itemName}黑名單嗎？`)) { list.length = 0; this.resetAndRescan(); } break;
+            case 0: return this.menuStructure.items['4'];
+        }
+        return () => this._manageList(configKey, itemName);
+    },
+
+    _manageDuration() {
+        const min = CONFIG.DURATION_MIN; const max = CONFIG.DURATION_MAX;
+        const text = `【管理影片長度過濾】(0=不限制)\n\n1. 最短長度 (分): ${min > 0 ? min/60 : '無'}\n2. 最長長度 (分): ${max > 0 ? max/60 : '無'}\n3. 重設\n0. 返回`;
+        const choice = parseInt(prompt(text), 10);
+        const parse = (val) => (val === null || val.trim() === '') ? null : (isNaN(parseFloat(val)) ? null : Math.floor(parseFloat(val) * 60));
+
+        switch (choice) {
+            case 1: { const v = parse(prompt('輸入最短影片長度 (分鐘)', min > 0 ? min/60 : '')); if (v !== null) { CONFIG.DURATION_MIN = v; this.resetAndRescan(); } break; }
+            case 2: { const v = parse(prompt('輸入最長影片長度 (分鐘)', max > 0 ? max/60 : '')); if (v !== null) { CONFIG.DURATION_MAX = v; this.resetAndRescan(); } break; }
+            case 3: if (confirm('⚠️ 確定要重設長度限制嗎？')) { CONFIG.DURATION_MIN = 0; CONFIG.DURATION_MAX = 0; this.resetAndRescan(); } break;
+            case 0: return this.menuStructure.items['4'];
+        }
+        return () => this._manageDuration();
+    },
+
+    _resetAllToDefaults() {
+        Object.keys(DEFAULT_CONFIG).forEach(key => {
+            const gmKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+            CONFIG[key] = DEFAULT_CONFIG[key];
+            GM_setValue(gmKey, DEFAULT_CONFIG[key]);
+        });
+        CONFIG.RULE_ENABLES = { ...DEFAULT_RULE_ENABLES };
+        GM_setValue('ruleEnables', CONFIG.RULE_ENABLES);
+        this.resetAndRescan('系統已恢復預設值');
+        alert('✅ 所有設定已恢復預設值。');
+    },
+
+    setupMenu() {
+        if (this.menuHandle) { try { GM_unregisterMenuCommand(this.menuHandle); } catch (e) {} }
+        this.menuHandle = GM_registerMenuCommand('⚙️ 淨化大師設定 (Settings)...', () => {
+             this._buildMenu();
+             this._renderMenu(this.menuStructure);
+        });
+    },
+
+    init() {
+        if (window.ytPurifierInitialized) return;
+        window.ytPurifierInitialized = true;
+
+        logger.logStart();
+        utils.injectCSS();
+        RuleEngine.init();
+        this.setupMenu();
+        Enhancer.initGlobalClickListener();
+
+        const debouncedScan = utils.debounce(() => Main.scanPage('observer'), CONFIG.DEBOUNCE_DELAY);
+        const observer = new MutationObserver(debouncedScan);
+
+        const onReady = () => {
+            observer.observe(document.body, { childList: true, subtree: true });
+            window.addEventListener('yt-navigate-finish', () => Main.scanPage('navigate'));
+            Main.scanPage('initial');
+        };
+
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', onReady, { once: true });
+        else onReady();
+    }
+};
+
+Main.init();
+
+})();

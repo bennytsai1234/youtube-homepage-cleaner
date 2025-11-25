@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.2.1
-// @description  為極致體驗而生的內容過濾器。透過移除定期掃描和新增快取機制，顯著提升效能。重構選單系統，提高可維護性。
+// @version      1.2.2
+// @description  為極致體驗而生的內容過濾器。引入靜態CSS過濾器大幅提升效能，並分離部分規則以提高可維護性。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 1. 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.2.0' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.2.2' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -110,16 +110,11 @@ const SELECTORS = {
 const utils = {
     debounce: (func, delay) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => func(...a), delay); }; },
     injectCSS: () => {
-        const styleContent = 'ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer, ytd-statement-banner-renderer { display: none !important; }';
-        // Using GM_addStyle for broad compatibility with userscript managers like Tampermonkey and Greasemonkey.
-        // As a fallback, or in environments where GM_addStyle might not be directly available or behaves differently (e.g., some Firefox setups),
-        // we append a <style> element directly to the document head.
-        if (typeof GM_addStyle === 'function') {
-            GM_addStyle(styleContent);
-        } else {
+        // This is now handled by the much more powerful StaticCSSManager
+        if (typeof GM_addStyle !== 'function') {
             const style = document.createElement('style');
             style.type = 'text/css';
-            style.appendChild(document.createTextNode(styleContent));
+            style.id = 'yt-purifier-fallback-style';
             (document.head || document.documentElement).appendChild(style);
         }
     },
@@ -240,7 +235,53 @@ const logger = {
     logStart: () => console.log(`%c🚀 ${SCRIPT_INFO.name} v${SCRIPT_INFO.version} 啟動. (Debug: ${CONFIG.DEBUG_MODE})`, 'color:#3498db; font-weight:bold; font-size: 1.2em;'),
 };
 
-// --- 5. 功能增強模組 (點擊優化) ---
+// --- 5. 靜態 CSS 過濾器 (效能核心) ---
+const StaticCSSManager = {
+    generateAndInject() {
+        const videoItemContainers = [
+            'ytd-rich-item-renderer',
+            'ytd-video-renderer',
+            'ytd-compact-video-renderer',
+            'ytd-grid-video-renderer',
+            'yt-lockup-view-model',
+        ];
+
+        const staticRules = [
+            // --- Direct element hiding ---
+            { configKey: 'ad_sponsor', selector: 'ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer' },
+            { configKey: 'premium_banner', selector: 'ytd-statement-banner-renderer' },
+            { configKey: 'inline_survey', selector: 'ytd-rich-section-renderer:has(ytd-inline-survey-renderer)' },
+            { configKey: 'clarify_box', selector: 'ytd-info-panel-container-renderer' },
+
+            // --- Hiding containers using :has() ---
+            // These apply to individual video/playlist items
+            { configKey: 'ad_sponsor', containerSelectors: videoItemContainers, innerSelector: '[aria-label*="廣告"], [aria-label*="Sponsor"], [aria-label="贊助商廣告"]' },
+            { configKey: 'members_only', containerSelectors: videoItemContainers, innerSelector: '[aria-label*="會員專屬"]' },
+            { configKey: 'shorts_item', containerSelectors: videoItemContainers, innerSelector: 'a[href*="/shorts/"]' },
+            { configKey: 'mix_only', containerSelectors: videoItemContainers, innerSelector: 'a[aria-label*="合輯"], a[aria-label*="Mix"]' },
+        ];
+
+        let cssString = '';
+
+        staticRules.forEach(rule => {
+            if (CONFIG.RULE_ENABLES[rule.configKey] === false) return;
+
+            if (rule.selector) {
+                cssString += `${rule.selector} { display: none !important; }\n`;
+            } else if (rule.containerSelectors && rule.innerSelector) {
+                cssString += rule.containerSelectors.map(container => `${container}:has(${rule.innerSelector})`).join(',\n') + ` { display: none !important; }\n`;
+            }
+        });
+
+        if (CONFIG.DEBUG_MODE) {
+            logger.info('Generated Static CSS Rules:', '#2ecc71');
+            console.log(cssString);
+        }
+        if(cssString) GM_addStyle(cssString);
+    }
+};
+
+// --- 6. 功能增強模組 (點擊優化) ---
 const Enhancer = {
     initGlobalClickListener() {
         document.addEventListener('click', (e) => {
@@ -276,7 +317,7 @@ const Enhancer = {
     }
 };
 
-// --- 6. 核心規則引擎 ---
+// --- 7. 核心規則引擎 (動態) ---
 const RuleEngine = {
     ruleCache: new Map(),
     globalRules: [],
@@ -294,11 +335,17 @@ const RuleEngine = {
 
     _buildBaseRules() {
         return [
-            { id: 'ad_sponsor', name: '廣告/促銷', conditions: { any: [{ type: 'selector', value: '[aria-label*="廣告"], [aria-label*="Sponsor"], [aria-label="贊助商廣告"], ytd-ad-slot-renderer' }] } },
-            { id: 'members_only', name: '會員專屬', conditions: { any: [ { type: 'selector', value: '[aria-label*="會員專屬"]' }, { type: 'text', selector: '.badge-shape-wiz__text, .yt-badge-shape__text', keyword: /頻道會員專屬|Members only/i } ] } },
-            { id: 'shorts_item', name: 'Shorts (單個)', conditions: { any: [{ type: 'selector', value: 'a[href*="/shorts/"]' }] } },
-            { id: 'mix_only', name: '合輯 (Mix)', conditions: { any: [ { type: 'text', selector: '.badge-shape-wiz__text, ytd-thumbnail-overlay-side-panel-renderer, .yt-badge-shape__text', keyword: /(^|\s)(合輯|Mix)(\s|$)/i }, { type: 'selector', value: 'a[aria-label*="合輯"], a[aria-label*="Mix"]' }, { type: 'text', selector: '#video-title, .yt-lockup-metadata-view-model__title', keyword: /^(合輯|Mix)[\s-–]/i } ] } },
-            { id: 'premium_banner', name: 'Premium 推廣', scope: 'ytd-statement-banner-renderer', conditions: { any: [{ type: 'selector', value: 'ytd-button-renderer' }] } },
+            // 'ad_sponsor' is now 100% in StaticCSSManager
+            // 'shorts_item' is now 100% in StaticCSSManager
+            // 'premium_banner' is now 100% in StaticCSSManager
+            // 'inline_survey' is now 100% in StaticCSSManager
+            // 'clarify_box' is now 100% in StaticCSSManager
+
+            // Kept text-based parts of mixed rules
+            { id: 'members_only', name: '會員專屬', conditions: { any: [ { type: 'text', selector: '.badge-shape-wiz__text, .yt-badge-shape__text', keyword: /頻道會員專屬|Members only/i } ] } },
+            { id: 'mix_only', name: '合輯 (Mix)', conditions: { any: [ { type: 'text', selector: '.badge-shape-wiz__text, ytd-thumbnail-overlay-side-panel-renderer, .yt-badge-shape__text', keyword: /(^|\s)(合輯|Mix)(\s|$)/i }, { type: 'text', selector: '#video-title, .yt-lockup-metadata-view-model__title', keyword: /^(合輯|Mix)[\s-–]/i } ] } },
+
+            // Kept all rules that rely on text matching for shelf/section titles
             { id: 'news_block', name: '新聞區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /新聞快報|Breaking News|ニュース/i }] } },
             { id: 'shorts_block', name: 'Shorts 區塊', scope: 'ytd-rich-shelf-renderer, ytd-reel-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /^Shorts$/i }] } },
             { id: 'posts_block', name: '貼文區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /貼文|Posts|投稿|Publicaciones|最新 YouTube 貼文/i }] } },
@@ -309,8 +356,6 @@ const RuleEngine = {
             { id: 'popular_gaming_shelf', name: '熱門遊戲區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /^熱門遊戲直播$/i }] } },
             { id: 'more_from_game_shelf', name: '「更多相關內容」區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#subtitle', keyword: /^更多此遊戲相關內容$/i }] } },
             { id: 'trending_playlist', name: '發燒影片/熱門內容', scope: 'ytd-rich-item-renderer, yt-lockup-view-model', conditions: { any: [{ type: 'text', selector: 'h3 a, #video-title', keyword: /發燒影片|Trending/i }] } },
-            { id: 'inline_survey', name: '意見調查問卷', scope: 'ytd-rich-section-renderer', conditions: { any: [{ type: 'selector', value: 'ytd-inline-survey-renderer' }] } },
-            { id: 'clarify_box', name: '資訊面板 (Wiki)', scope: 'ytd-info-panel-container-renderer', conditions: { any: [{ type: 'selector', value: 'h2.header-left-items' }] } },
         ];
     },
 
@@ -449,7 +494,7 @@ const RuleEngine = {
     }
 };
 
-// --- 7. 主控台與菜單系統 ---
+// --- 8. 主控台與菜單系統 ---
 const Main = {
     menuHandle: null,
     menuStructure: null,
@@ -468,6 +513,8 @@ const Main = {
             el.removeAttribute(ATTRS.HIDDEN_REASON);
             el.removeAttribute(ATTRS.WAIT_COUNT);
         });
+        // Re-inject CSS in case rules were toggled
+        StaticCSSManager.generateAndInject();
         RuleEngine.init();
         Main.scanPage('settings-changed');
     },
@@ -488,7 +535,27 @@ const Main = {
     },
 
     _buildRuleSubmenu() {
-        const items = RuleEngine._buildBaseRules().reduce((acc, rule, index) => {
+        // We need to get all original rules for the menu, even those in CSS
+        const allBaseRules = [
+            { id: 'ad_sponsor', name: '廣告/促銷' },
+            { id: 'members_only', name: '會員專屬' },
+            { id: 'shorts_item', name: 'Shorts (單個)'},
+            { id: 'mix_only', name: '合輯 (Mix)' },
+            { id: 'premium_banner', name: 'Premium 推廣' },
+            { id: 'news_block', name: '新聞區塊' },
+            { id: 'shorts_block', name: 'Shorts 區塊' },
+            { id: 'posts_block', name: '貼文區塊' },
+            { id: 'explore_topics', name: '探索更多主題' },
+            { id: 'shorts_grid_shelf', name: 'Shorts 區塊 (Grid)' },
+            { id: 'movies_shelf', name: '電影推薦區塊' },
+            { id: 'youtube_featured_shelf', name: 'YouTube 精選區塊' },
+            { id: 'popular_gaming_shelf', name: '熱門遊戲區塊' },
+            { id: 'more_from_game_shelf', name: '「更多相關內容」區塊' },
+            { id: 'trending_playlist', name: '發燒影片/熱門內容' },
+            { id: 'inline_survey', name: '意見調查問卷' },
+            { id: 'clarify_box', name: '資訊面板 (Wiki)' },
+        ];
+        const items = allBaseRules.reduce((acc, rule, index) => {
             acc[index + 1] = { title: rule.name, type: 'toggle', config: `RULE_ENABLES.${rule.id}`, afterAction: () => this.resetAndRescan() };
             return acc;
         }, {});
@@ -549,7 +616,11 @@ const Main = {
                 const keys = selected.config.split('.');
                 const isNested = keys.length > 1;
                 const value = isNested ? !CONFIG[keys[0]][keys[1]] : !CONFIG[keys[0]];
-                if (isNested) { CONFIG[keys[0]][keys[1]] = value; GM_setValue(keys[0].toLowerCase(), CONFIG[keys[0]]); }
+                if (isNested) {
+                    const ruleSet = { ...CONFIG[keys[0]], [keys[1]]: value };
+                    CONFIG[keys[0]] = ruleSet;
+                    GM_setValue('ruleEnables', ruleSet);
+                }
                 else { CONFIG[keys[0]] = value; GM_setValue(selected.config.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`), value); }
                 if (selected.afterAction) selected.afterAction();
                 break;
@@ -579,8 +650,8 @@ const Main = {
             case 1: {
                 const items = prompt(`輸入要新增的${itemName} (用逗號分隔)`);
                 if (items) {
-                    const toAdd = items.split(',').map(i => i.trim()).filter(i => i && !list.includes(i));
-                    if (toAdd.length > 0) { list.push(...toAdd); this.resetAndRescan(); }
+                    const toAdd = items.split(',').map(i => i.trim().toLowerCase()).filter(i => i && !list.includes(i));
+                    if (toAdd.length > 0) { list.push(...toAdd); GM_setValue(configKey.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`), list); this.resetAndRescan(); }
                 }
                 break;
             }
@@ -588,11 +659,11 @@ const Main = {
                 const item = prompt(`輸入要刪除的${itemName}:\n[ ${list.join(', ')} ]`);
                 if (item) {
                     const idx = list.findIndex(i => i.toLowerCase() === item.trim().toLowerCase());
-                    if (idx > -1) { list.splice(idx, 1); this.resetAndRescan(); } else { alert('項目不存在'); }
+                    if (idx > -1) { list.splice(idx, 1); GM_setValue(configKey.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`), list); this.resetAndRescan(); } else { alert('項目不存在'); }
                 }
                 break;
             }
-            case 3: if (confirm(`⚠️ 確定要清空所有${itemName}黑名單嗎？`)) { list.length = 0; this.resetAndRescan(); } break;
+            case 3: if (confirm(`⚠️ 確定要清空所有${itemName}黑名單嗎？`)) { list.length = 0; GM_setValue(configKey.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`), list); this.resetAndRescan(); } break;
             case 0: return this.menuStructure.items['4'];
         }
         return () => this._manageList(configKey, itemName);
@@ -605,13 +676,15 @@ const Main = {
         const parse = (val) => (val === null || val.trim() === '') ? null : (isNaN(parseFloat(val)) ? null : Math.floor(parseFloat(val) * 60));
 
         switch (choice) {
-            case 1: { const v = parse(prompt('輸入最短影片長度 (分鐘)', min > 0 ? min/60 : '')); if (v !== null) { CONFIG.DURATION_MIN = v; this.resetAndRescan(); } break; }
-            case 2: { const v = parse(prompt('輸入最長影片長度 (分鐘)', max > 0 ? max/60 : '')); if (v !== null) { CONFIG.DURATION_MAX = v; this.resetAndRescan(); } break; }
-            case 3: if (confirm('⚠️ 確定要重設長度限制嗎？')) { CONFIG.DURATION_MIN = 0; CONFIG.DURATION_MAX = 0; this.resetAndRescan(); } break;
+            case 1: { const v = parse(prompt('輸入最短影片長度 (分鐘)', min > 0 ? min/60 : '')); if (v !== null) { CONFIG.DURATION_MIN = v; GM_setValue('duration_min', v); this.resetAndRescan(); } break; }
+            case 2: { const v = parse(prompt('輸入最長影片長度 (分鐘)', max > 0 ? max/60 : '')); if (v !== null) { CONFIG.DURATION_MAX = v; GM_setValue('duration_max', v); this.resetAndRescan(); } break; }
+            case 3: if (confirm('⚠️ 確定要重設長度限制嗎？')) { CONFIG.DURATION_MIN = 0; CONFIG.DURATION_MAX = 0; GM_setValue('duration_min', 0); GM_setValue('duration_max', 0); this.resetAndRescan(); } break;
             case 0: return this.menuStructure.items['4'];
         }
         return () => this._manageDuration();
     },
+
+
 
     _resetAllToDefaults() {
         Object.keys(DEFAULT_CONFIG).forEach(key => {
@@ -638,7 +711,8 @@ const Main = {
         window.ytPurifierInitialized = true;
 
         logger.logStart();
-        utils.injectCSS();
+        // **PERFORMANCE**: Inject static CSS rules first for immediate filtering
+        StaticCSSManager.generateAndInject();
         RuleEngine.init();
         this.setupMenu();
         Enhancer.initGlobalClickListener();

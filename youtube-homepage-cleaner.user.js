@@ -14,8 +14,8 @@
 // @run-at       document-start
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=youtube.com
-// @downloadURL https://update.greasyfork.org/scripts/543292/YouTube%20%E6%B7%A8%E5%8C%96%E5%A4%A7%E5%B8%AB.user.js
-// @updateURL https://update.greasyfork.org/scripts/543292/YouTube%20%E6%B7%A8%E5%8C%96%E5%A4%A7%E5%B8%AB.meta.js
+// @downloadURL https://raw.githubusercontent.com/bennytsai1234/youtube-homepage-cleaner/main/youtube-homepage-cleaner.user.js
+// @updateURL https://raw.githubusercontent.com/bennytsai1234/youtube-homepage-cleaner/main/youtube-homepage-cleaner.user.js
 // ==/UserScript==
 
 (function () {

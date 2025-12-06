@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.2.3
+// @version      1.2.2
 // @description  為極致體驗而生的內容過濾器。引入靜態CSS過濾器大幅提升效能，並分離部分規則以提高可維護性。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -14,15 +14,15 @@
 // @run-at       document-start
 // @license      MIT
 // @icon         https://www.google.com/s2/favicons?sz=64&domain=youtube.com
-// @downloadURL https://raw.githubusercontent.com/bennytsai1234/youtube-homepage-cleaner/main/youtube-homepage-cleaner.user.js
-// @updateURL https://raw.githubusercontent.com/bennytsai1234/youtube-homepage-cleaner/main/youtube-homepage-cleaner.user.js
+// @downloadURL https://update.greasyfork.org/scripts/543292/YouTube%20%E6%B7%A8%E5%8C%96%E5%A4%A7%E5%B8%AB.user.js
+// @updateURL https://update.greasyfork.org/scripts/543292/YouTube%20%E6%B7%A8%E5%8C%96%E5%A4%A7%E5%B8%AB.meta.js
 // ==/UserScript==
 
 (function () {
 'use strict';
 
 // --- 1. 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.2.3' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.2.2' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -48,7 +48,6 @@ const DEFAULT_RULE_ENABLES = {
     inline_survey: true,
     clarify_box: true,
     explore_topics: true,
-    recommended_playlists: true,
 };
 
 const DEFAULT_CONFIG = {
@@ -253,7 +252,6 @@ const StaticCSSManager = {
             { configKey: 'premium_banner', selector: 'ytd-statement-banner-renderer, ytd-rich-section-renderer:has(ytd-statement-banner-renderer)' },
             { configKey: 'inline_survey', selector: 'ytd-rich-section-renderer:has(ytd-inline-survey-renderer)' },
             { configKey: 'clarify_box', selector: 'ytd-info-panel-container-renderer' },
-            { configKey: 'recommended_playlists', selector: 'ytd-browse[page-subtype="home"] ytd-rich-item-renderer:has(a[href^="/playlist?list="])' },
 
             // --- Hiding containers using :has() ---
             // These apply to individual video/playlist items
@@ -556,7 +554,6 @@ const Main = {
             { id: 'trending_playlist', name: '發燒影片/熱門內容' },
             { id: 'inline_survey', name: '意見調查問卷' },
             { id: 'clarify_box', name: '資訊面板 (Wiki)' },
-            { id: 'recommended_playlists', name: '推薦播放清單' },
         ];
         const items = allBaseRules.reduce((acc, rule, index) => {
             acc[index + 1] = { title: rule.name, type: 'toggle', config: `RULE_ENABLES.${rule.id}`, afterAction: () => this.resetAndRescan() };

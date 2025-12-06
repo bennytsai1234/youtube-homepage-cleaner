@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.2.3
+// @version      1.2.4
 // @description  為極致體驗而生的內容過濾器。引入靜態CSS過濾器大幅提升效能，並分離部分規則以提高可維護性。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 1. 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.2.3' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.2.4' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -252,6 +252,7 @@ const StaticCSSManager = {
             { configKey: 'premium_banner', selector: 'ytd-statement-banner-renderer, ytd-rich-section-renderer:has(ytd-statement-banner-renderer)' },
             { configKey: 'inline_survey', selector: 'ytd-rich-section-renderer:has(ytd-inline-survey-renderer)' },
             { configKey: 'clarify_box', selector: 'ytd-info-panel-container-renderer' },
+            { configKey: 'recommended_playlists', selector: 'ytd-browse[page-subtype="home"] ytd-rich-item-renderer:has(a[href^="/playlist?list="]), ytd-browse[page-subtype="home"] ytd-rich-item-renderer:has([content-id^="PL"])' },
 
             // --- Hiding containers using :has() ---
             // These apply to individual video/playlist items

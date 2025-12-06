@@ -249,7 +249,7 @@ const StaticCSSManager = {
         const staticRules = [
             // --- Direct element hiding ---
             { configKey: 'ad_sponsor', selector: 'ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer' },
-            { configKey: 'premium_banner', selector: 'ytd-statement-banner-renderer' },
+            { configKey: 'premium_banner', selector: 'ytd-statement-banner-renderer, ytd-rich-section-renderer:has(ytd-statement-banner-renderer)' },
             { configKey: 'inline_survey', selector: 'ytd-rich-section-renderer:has(ytd-inline-survey-renderer)' },
             { configKey: 'clarify_box', selector: 'ytd-info-panel-container-renderer' },
 

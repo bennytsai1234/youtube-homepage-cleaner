@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.2.6
+// @version      1.2.7
 // @description  為極致體驗而生的內容過濾器。引入靜態CSS過濾器大幅提升效能，並分離部分規則以提高可維護性。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 1. 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.2.6' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.2.7' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -249,7 +249,9 @@ const StaticCSSManager = {
 
         const staticRules = [
             // --- Direct element hiding ---
-            { configKey: 'ad_block_popup', selector: 'tp-yt-paper-dialog:has(ytd-enforcement-message-view-model), ytd-enforcement-message-view-model' },
+            // Anti-adblock popup: hide dialog, backdrop, and restore scrolling
+            { configKey: 'ad_block_popup', selector: 'tp-yt-paper-dialog:has(ytd-enforcement-message-view-model), ytd-enforcement-message-view-model, #immersive-translate-browser-popup, tp-yt-iron-overlay-backdrop:has(~ tp-yt-paper-dialog ytd-enforcement-message-view-model), tp-yt-iron-overlay-backdrop.opened' },
+            { configKey: 'ad_block_popup', selector: 'ytd-app:has(ytd-enforcement-message-view-model), body:has(ytd-enforcement-message-view-model), html:has(ytd-enforcement-message-view-model)', style: 'overflow: auto !important; overflow-y: auto !important; position: static !important;' },
             { configKey: 'ad_sponsor', selector: 'ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer, #masthead-ad' },
             { configKey: 'premium_banner', selector: 'ytd-statement-banner-renderer, ytd-rich-section-renderer:has(ytd-statement-banner-renderer)' },
             { configKey: 'inline_survey', selector: 'ytd-rich-section-renderer:has(ytd-inline-survey-renderer)' },
@@ -269,10 +271,12 @@ const StaticCSSManager = {
         staticRules.forEach(rule => {
             if (CONFIG.RULE_ENABLES[rule.configKey] === false) return;
 
+            const style = rule.style || 'display: none !important;';
+
             if (rule.selector) {
-                cssString += `${rule.selector} { display: none !important; }\n`;
+                cssString += `${rule.selector} { ${style} }\n`;
             } else if (rule.containerSelectors && rule.innerSelector) {
-                cssString += rule.containerSelectors.map(container => `${container}:has(${rule.innerSelector})`).join(',\n') + ` { display: none !important; }\n`;
+                cssString += rule.containerSelectors.map(container => `${container}:has(${rule.innerSelector})`).join(',\n') + ` { ${style} }\n`;
             }
         });
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.2.5
+// @version      1.2.6
 // @description  為極致體驗而生的內容過濾器。引入靜態CSS過濾器大幅提升效能，並分離部分規則以提高可維護性。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 1. 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.2.5' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.2.6' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -31,6 +31,7 @@ const ATTRS = {
 const State = { HIDE: 'HIDE', KEEP: 'KEEP', WAIT: 'WAIT' };
 
 const DEFAULT_RULE_ENABLES = {
+    ad_block_popup: true,
     ad_sponsor: true,
     members_only: true,
     shorts_item: true,
@@ -248,6 +249,7 @@ const StaticCSSManager = {
 
         const staticRules = [
             // --- Direct element hiding ---
+            { configKey: 'ad_block_popup', selector: 'tp-yt-paper-dialog:has(ytd-enforcement-message-view-model), ytd-enforcement-message-view-model' },
             { configKey: 'ad_sponsor', selector: 'ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer, #masthead-ad' },
             { configKey: 'premium_banner', selector: 'ytd-statement-banner-renderer, ytd-rich-section-renderer:has(ytd-statement-banner-renderer)' },
             { configKey: 'inline_survey', selector: 'ytd-rich-section-renderer:has(ytd-inline-survey-renderer)' },
@@ -538,6 +540,7 @@ const Main = {
     _buildRuleSubmenu() {
         // We need to get all original rules for the menu, even those in CSS
         const allBaseRules = [
+            { id: 'ad_block_popup', name: '反廣告攔截彈窗' },
             { id: 'ad_sponsor', name: '廣告/促銷' },
             { id: 'members_only', name: '會員專屬' },
             { id: 'shorts_item', name: 'Shorts (單個)'},

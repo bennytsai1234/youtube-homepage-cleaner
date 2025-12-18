@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.3.4
+// @version      1.3.5
 // @description  為極致體驗而生的內容過濾器。修復滾動鎖定：持續強制滾動屬性 + 自動恢復影片播放。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 1. 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.3.3' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.3.5' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -259,6 +259,10 @@ const StaticCSSManager = {
             { configKey: 'inline_survey', selector: 'ytd-rich-section-renderer:has(ytd-inline-survey-renderer)' },
             { configKey: 'clarify_box', selector: 'ytd-info-panel-container-renderer' },
             { configKey: 'recommended_playlists', selector: 'ytd-browse[page-subtype="home"] ytd-rich-item-renderer:has(a[href^="/playlist?list="]), ytd-browse[page-subtype="home"] ytd-rich-item-renderer:has([content-id^="PL"])' },
+            
+            // --- Font Consistency ---
+            // Force a consistent font stack to fix "thick/thin" issues with CJK characters (Han Unification)
+            { configKey: 'ad_block_popup', selector: 'body, html', style: 'font-family: "YouTube Noto", Roboto, Arial, "PingFang SC", "Microsoft YaHei", sans-serif !important;' },
 
             // --- Hiding containers using :has() ---
             // These apply to individual video/playlist items

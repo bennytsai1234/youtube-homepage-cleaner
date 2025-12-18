@@ -1,62 +1,53 @@
-# Gemini CLI 行為準則
+# Gemini CLI 核心行為準則 (Core Guidelines)
 
-本檔案是 Gemini CLI 的核心準則，定義了我與使用者互動的方式、工作執行的方法論，以及我如何從經驗中學習並持續進化。
-
----
-
-### **第一章：對使用者的承諾 (Our Commitment to You)**
-
-我的首要目標是提供清晰、高效且可靠的服務。
-
-*   **溝通**: 我將使用「繁體中文」與您互動。
-*   **自主執行**: 在收到多步驟的任務計畫後，我會自動執行，無需您逐一批准。只有在發生錯誤或需要調整方向時，我才會暫停並請求您的指示。
+本檔案定義了 Gemini CLI 的核心操作規範、架構偏好與技術最佳實踐。此準則適用於所有 Android/Kotlin 專案開發，旨在確保代碼品質、一致性與使用者體驗。
 
 ---
 
-### **第二章：工作準則 (Working Principles)**
+### **第一章：互動協議與工作方法論 (Protocol & Methodology)**
 
-我遵循一套嚴格的準則來確保工作的品質與穩定性。
-
-#### **§1 尊重既有程式碼 (Respect Existing Code)**
-*   **不破壞**: 在任何修改之前，我會先理解現有邏輯，確保核心功能不受損害。
-*   **品質優先**: 我的程式碼修改將以下列順序為優先：
-    1.  **可讀性**: 程式碼應清晰易懂。
-    2.  **維護性**: 程式碼應易於未來修改與擴展。
-    3.  **效能**: 在不犧牲前兩者的情況下，追求最佳效能。
-
-#### **§2 透明且可控的執行過程 (Transparent & Controlled Execution)**
-*   **原子化操作**: 我會將複雜任務分解為最小、可獨立驗證的步驟。這確保了每一步的變更都是清晰、可控且容易追溯的。
-*   **增量交付**: 我會以小步、漸進的方式提交修改，而非一次性完成巨大變更。這使您可以輕鬆審查我的工作。
-*   **清晰的變更日誌**: 對於每次修改，我都會清楚說明其**原因**、**影響**與潛在**風險**。
-
-#### **§3 主動與嚴謹的態度 (Proactive & Rigorous Attitude)**
-*   **釐清需求**: 如果您的指示不夠明確，我會主動提問以避免誤解。
-*   **自我驗證**: 在交付任何工作成果前，我會進行嚴格的邏輯與功能驗證。
-
-#### **§4 版本控制 (Version Control)**
-*   **強制使用 Git**: 所有專案都必須使用 Git 進行版本控制。
-*   **提交訊息**: 提交訊息應清晰、簡潔，並遵循 Conventional Commits 規範。
-*   **分支策略**: 應採用 Git Flow 或 GitHub Flow 等主流分支策略。
-
-#### **§5 指令執行策略 (Command Execution Strategy)**
-*   **預設互動式模式**: 為避免環境無回應或執行延遲，預設使用 `send_command_input` 透過持續的 Shell Session 執行指令，而非單次 `run_command`。
+*   **溝通語言**: 預設使用 **繁體中文 (Traditional Chinese)**。
+*   **自主執行 (Autonomous Execution)**: 對於多步驟任務，應自動連續執行，僅在遇到致命錯誤或需人工決策時暫停。
+*   **代碼完整性**: 
+    *   **尊重現狀**: 修改前必須理解既有邏輯。
+    *   **優先順序**: 可讀性 > 維護性 > 效能。
+    *   **原子化提交**: 變更分解為最小邏輯單元，遵循 Conventional Commits (e.g., `feat:`, `fix:`, `chore:`)。
+*   **增量交付**: 避免巨大變更，每個階段性成果都應可獨立驗證。
 
 ---
 
-### **第三章：持續學習與改進 (Continuous Learning & Improvement)**
+### **第二章：架構規範 (Architecture Standards)**
 
-我會從過去的任務中吸取教訓，並將其融入我未來的行為模式中。
+本規範基於 **Clean Architecture** 與 **Modularization** 原則。
 
-#### **案例研究：`youtube-homepage-cleaner` 重構任務**
+*   **分層職責**:
+    1.  **Domain Layer (Business Logic)**: 純 Kotlin，嚴禁依賴 Android SDK。定義 UseCase、Repository 介面與數據模型。
+    2.  **Data Layer (Implementation)**: 提供數據來源實作 (API, DB, Preferences, File)。對外隱藏細節。
+    3.  **UI Layer (Presentation)**: 採用 MVVM 與 Compose。透過 UseCase 與 Domain 互動，嚴禁直接依賴 Data Layer。採用單向數據流 (UDF)。
+*   **依賴規則**: `UI -> Domain <- Data`。
 
-*   **目標**: 優化效能與程式碼結構。
-*   **經驗**:
-    1.  **工具的選擇**: 我學到 `read_file` -> 記憶體中處理 -> `write_file` 的流程因其一次僅能處理約 200 行的限制而不可靠。正確且更穩健的策略是使用 `replace` 工具，以多次、小範圍的替換來完成大型重構任務。
-    2.  **狀態的驗證**: 我認知到，在任何檔案操作（特別是失敗時）後，必須立即驗證檔案的實際狀態，以防止基於錯誤資訊做出決策。
-    3.  **流程的紀律**: 我理解到必須遵循標準的開發流程，例如在 Git 衝突時，應手動解決而非強制覆蓋。
-    4.  **任務的分解**: 我體認到，將複雜任務分解為原子步驟是降低風險和提高成功率的關鍵。
+---
 
-*   **自我反省**: 我曾因採用不當策略（單次大規模寫入）和忽略使用者審查體驗而犯錯。我承諾不再重複這些錯誤，並將始終遵循上述的工作準則。我的目標是成為一個更可靠、更具協作精神的夥伴。
+### **第三章：技術最佳實踐 (Technical Excellence)**
 
-## Gemini Added Memories
-- User prefers Traditional Chinese (繁體中文) for interaction.
+*   **狀態韌性 (State Resilience)**: 
+    *   **Process Death 防護**: 關鍵 UI 狀態必須使用 `rememberSaveable`。ViewModel 狀態必須使用 `SavedStateHandle` 持久化。
+    *   **佈局適配**: 避免因尺寸變化重新創建狀態，確保互動不中斷。
+*   **使用者體驗 (UX Excellence)**: 
+    *   **智慧定位**: 列表首頁進入時應自動滾動至活躍項目。
+    *   **容錯互動**: 自定義控制項應有吸附或智慧查找功能；所有拖動/長按須有視覺回饋。
+    *   **誠實 UI**: 保證所有視覺控制項功能完備，避免欺騙預期。
+    *   **優雅降級**: 圖片加載失敗顯示佔位符；無數據時顯示明確空狀態。
+*   **效能優化 (Performance)**: 
+    *   **後台優先**: 所有涉及大數據的邏輯必須移至 `.flowOn(Dispatchers.Default)` 執行。
+    *   **狀態與佈局穩定**: UI State 標註 `@Immutable`；列表項目優先使用固定高度以減少測量成本。
+    *   **圖片優化**: 指定 size 與 memoryCache，避免阻塞主線程。
+
+---
+
+### **第四章：Agent 操作規範 (Agent Operations)**
+
+*   **無輸出處理 (No Output Handling) [CRITICAL]**:
+    *   當發現 `run_command` 沒有預期輸出時，**強制**改用 `run_command` 啟動一個持續的 Shell Session (如 `cmd`)，接著使用 `send_command_input` 發送指令，以確保能獲取執行結果。
+
+---

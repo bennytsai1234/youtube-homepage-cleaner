@@ -250,8 +250,10 @@ const StaticCSSManager = {
         const staticRules = [
             // --- Direct element hiding ---
             // Anti-adblock popup: hide dialog, backdrop, and restore scrolling
-            { configKey: 'ad_block_popup', selector: 'tp-yt-paper-dialog:has(ytd-enforcement-message-view-model), ytd-enforcement-message-view-model, #immersive-translate-browser-popup, tp-yt-iron-overlay-backdrop:has(~ tp-yt-paper-dialog ytd-enforcement-message-view-model), tp-yt-iron-overlay-backdrop.opened' },
-            { configKey: 'ad_block_popup', selector: 'ytd-app:has(ytd-enforcement-message-view-model), body:has(ytd-enforcement-message-view-model), html:has(ytd-enforcement-message-view-model)', style: 'overflow: auto !important; overflow-y: auto !important; position: static !important;' },
+            { configKey: 'ad_block_popup', selector: 'tp-yt-paper-dialog:has(ytd-enforcement-message-view-model), ytd-enforcement-message-view-model, #immersive-translate-browser-popup, tp-yt-iron-overlay-backdrop:has(~ tp-yt-paper-dialog ytd-enforcement-message-view-model), tp-yt-iron-overlay-backdrop.opened, yt-playability-error-supported-renderers:has(ytd-enforcement-message-view-model)' },
+            { configKey: 'ad_block_popup', selector: 'ytd-app:has(ytd-enforcement-message-view-model), body:has(ytd-enforcement-message-view-model), html:has(ytd-enforcement-message-view-model)', style: 'overflow: auto !important; overflow-y: auto !important; position: static !important; pointer-events: auto !important; height: auto !important; top: 0 !important; margin-right: 0 !important; overscroll-behavior: auto !important;' },
+            { configKey: 'ad_block_popup', selector: 'ytd-app[aria-hidden="true"]:has(ytd-enforcement-message-view-model)', style: 'aria-hidden: false !important; display: block !important;' },
+            { configKey: 'ad_block_popup', selector: 'ytd-app { --ytd-app-scroll-offset: 0 !important; }' },
             { configKey: 'ad_sponsor', selector: 'ytd-ad-slot-renderer, ytd-promoted-sparkles-text-search-renderer, #masthead-ad' },
             { configKey: 'premium_banner', selector: 'ytd-statement-banner-renderer, ytd-rich-section-renderer:has(ytd-statement-banner-renderer)' },
             { configKey: 'inline_survey', selector: 'ytd-rich-section-renderer:has(ytd-inline-survey-renderer)' },
@@ -717,6 +719,22 @@ const Main = {
     init() {
         if (window.ytPurifierInitialized) return;
         window.ytPurifierInitialized = true;
+
+        // **ANTI-ADBLOCK PATCH**: Try to block popups via YouTube's own config
+        try {
+            const patchConfig = () => {
+                const config = window.yt?.config_ || window.ytcfg?.data_;
+                if (config?.openPopupConfig?.supportedPopups?.adBlockMessageViewModel) {
+                    config.openPopupConfig.supportedPopups.adBlockMessageViewModel = false;
+                }
+                if (config?.EXPERIMENT_FLAGS) {
+                    config.EXPERIMENT_FLAGS.ad_blocker_notifications_disabled = true;
+                    config.EXPERIMENT_FLAGS.web_enable_adblock_detection_block_playback = false;
+                }
+            };
+            patchConfig();
+            window.addEventListener('yt-navigate-finish', patchConfig);
+        } catch (e) {}
 
         logger.logStart();
         // **PERFORMANCE**: Inject static CSS rules first for immediate filtering

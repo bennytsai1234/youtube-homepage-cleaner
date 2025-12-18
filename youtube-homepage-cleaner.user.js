@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.3.5
+// @version      1.3.6
 // @description  為極致體驗而生的內容過濾器。修復滾動鎖定：持續強制滾動屬性 + 自動恢復影片播放。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 1. 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.3.5' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.3.6' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -300,6 +300,7 @@ const AdBlockPopupNeutralizer = {
     observer: null,
     scrollInterval: null,
     videoInterval: null,
+    lastDetectionTime: 0,
     
     // 多語言關鍵字偵測 (Detect keywords in multiple languages)
     // 包含: 英文, 繁體中文, 簡體中文, 日文, 韓文, 西班牙文, 德文, 法文, 俄文, 葡萄牙文
@@ -395,6 +396,9 @@ const AdBlockPopupNeutralizer = {
     removePopup(node) {
         if(CONFIG.DEBUG_MODE) logger.info(`🚫 Removing AdBlock Popup detected via ${node.tagName}`);
         
+        // 記錄最後一次移除時間
+        this.lastDetectionTime = Date.now();
+
         // 嘗試點擊關閉按鈕 (如果有)
         const dismissBtn = node.querySelector('[aria-label="可能有風險"],[aria-label="Close"], #dismiss-button');
         if (dismissBtn) dismissBtn.click();
@@ -479,6 +483,10 @@ const AdBlockPopupNeutralizer = {
     },
 
     resumeVideo() {
+        // 避免過度積極導致使用者無法暫停
+        // 只有先前提到的 "最近偵測到彈窗" 時才強制播放
+        if (Date.now() - this.lastDetectionTime > 2000) return;
+
         const video = document.querySelector('video');
         if (!video) return;
 

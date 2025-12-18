@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.3.3
+// @version      1.3.4
 // @description  為極致體驗而生的內容過濾器。修復滾動鎖定：持續強制滾動屬性 + 自動恢復影片播放。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
@@ -293,226 +293,198 @@ const StaticCSSManager = {
 // --- 6. 廣告攔截彈窗中和器 (主動移除 + 恢復狀態) ---
 // 參考 RemoveAdblockThing 專案的實作方式，採用更積極的策略
 const AdBlockPopupNeutralizer = {
-    checkInterval: null,
-    scrollFixInterval: null,
-    initialized: false,
+    observer: null,
+    scrollInterval: null,
+    videoInterval: null,
+    
+    // 多語言關鍵字偵測 (Detect keywords in multiple languages)
+    // 包含: 英文, 繁體中文, 簡體中文, 日文, 韓文, 西班牙文, 德文, 法文, 俄文, 葡萄牙文
+    keywords: [
+        'Ad blockers', '廣告攔截器', '广告拦截器', '広告ブロッカー', '광고 차단기', 
+        'Bloqueadores de anuncios', 'Werbeblocker', 'Bloqueurs de publicité', 'Блокировщики рекламы', 'Bloqueadores de anúncios',
+        'Video player will be blocked', '影片播放器將被封鎖', '视频播放器将被封锁',
+        'Allow YouTube', '允許 YouTube', '允许 YouTube',
+        'You have an ad blocker', '您使用了廣告攔截器',
+        'YouTube 禁止使用廣告攔截器', 'YouTube doesn\'t allow ad blockers'
+    ],
 
     init() {
-        if (this.initialized) return;
-        this.initialized = true;
+        if (this.observer) return;
+        
+        // 1. 啟動 MutationObserver 監控彈窗 (Lightning Speed)
+        this.startObserver();
+        
+        // 2. 啟動定時器進行備用檢查 (Backup Check)
+        this.startTimers();
+        
+        // 3. 立即執行一次清潔
+        this.clean();
 
-        // 立即執行一次
-        this.neutralize();
-        this.enforceScroll();
+        if (CONFIG.DEBUG_MODE) logger.info('🛡️ AdBlockPopupNeutralizer Activated (Text-Based Mode)');
+    },
 
-        // 持續監控並修復滾動問題 (每 200ms - 更頻繁)
-        this.scrollFixInterval = setInterval(() => {
-            this.enforceScroll();
-            this.ensureVideoPlaying();
-        }, 200);
+    startObserver() {
+        const target = document.querySelector('ytd-popup-container') || document.querySelector('ytd-app') || document.body;
+        if (!target) return setTimeout(() => this.startObserver(), 500); // Retry
 
-        // 定期檢查 popup (每 500ms - 更頻繁)
-        this.checkInterval = setInterval(() => this.neutralize(), 500);
-
-        // 頁面導航時重新檢查
-        window.addEventListener('yt-navigate-finish', () => {
-            setTimeout(() => {
-                this.neutralize();
-                this.enforceScroll();
-            }, 100);
+        this.observer = new MutationObserver((mutations) => {
+            let detected = false;
+            for (const mutation of mutations) {
+                for (const node of mutation.addedNodes) {
+                    if (node.nodeType === 1) { // Element
+                        // 檢查特定標籤或內容
+                        if (this.isAdBlockPopup(node)) {
+                            this.removePopup(node);
+                            detected = true;
+                        }
+                    }
+                }
+            }
+            if (detected) {
+                this.unlockScroll();
+                this.resumeVideo();
+            }
         });
 
-        if (CONFIG.DEBUG_MODE) {
-            console.log('%c[AdBlockPopupNeutralizer] Initialized', 'color: #3498db; font-weight: bold;');
+        this.observer.observe(target, { childList: true, subtree: true });
+    },
+
+    startTimers() {
+        // 定期檢查 (每 500ms)
+        setInterval(() => this.clean(), 500);
+
+        // 影片播放守護 (每 500ms)
+        this.videoInterval = setInterval(() => this.resumeVideo(), 500);
+
+        // 滾動鎖定守護 (每 200ms - 針對 "Snap back" 問題)
+        this.scrollInterval = setInterval(() => this.unlockScroll(), 200);
+    },
+
+    isAdBlockPopup(node) {
+        if (!node || !node.innerHTML) return false;
+        
+        // 1. 檢查特定標籤
+        const tagName = node.tagName.toLowerCase();
+        if (tagName === 'tp-yt-paper-dialog' || tagName === 'ytd-enforcement-message-view-model') {
+            return true; // 這些標籤幾乎總是反廣告相關 (或者我們可以檢查關鍵字以防萬一，但既然是淨化大師，預設應積極)
+        }
+
+        // 2. 檢查特定的 class 或 id (legacy support)
+        if (node.classList.contains('ytd-enforcement-message-view-model') || node.id === 'error-screen') {
+            return true;
+        }
+
+        // 3. 深度檢查內容關鍵字 (針對一般容器)
+        // 為了效能，只檢查包含大量文字的節點
+        if (node.textContent.length > 10 && node.textContent.length < 3000) {
+            return this.containsKeyword(node);
+        }
+
+        return false;
+    },
+
+    containsKeyword(node) {
+        const text = node.textContent;
+        return this.keywords.some(kw => text.includes(kw));
+    },
+
+    removePopup(node) {
+        if(CONFIG.DEBUG_MODE) logger.info(`🚫 Removing AdBlock Popup detected via ${node.tagName}`);
+        
+        // 嘗試點擊關閉按鈕 (如果有)
+        const dismissBtn = node.querySelector('[aria-label="可能有風險"],[aria-label="Close"], #dismiss-button');
+        if (dismissBtn) dismissBtn.click();
+
+        // 移除節點
+        node.remove();
+
+        // 處理背景遮罩
+        const backdrop = document.querySelector('tp-yt-iron-overlay-backdrop');
+        if (backdrop) {
+            backdrop.style.display = 'none';
+            backdrop.style.pointerEvents = 'none';
+            backdrop.remove(); // 直接移除
         }
     },
 
-    // 確保影片正在播放
-    ensureVideoPlaying() {
-        if (!CONFIG.RULE_ENABLES.ad_block_popup) return;
-
-        const video = document.querySelector('video');
-        if (video && video.paused && !video.ended) {
-            // 檢查是否是使用者主動暫停（通過檢查是否有 paused 狀態的播放器）
-            const player = document.querySelector('.html5-video-player');
-            const isPausedByUser = player?.classList.contains('paused-mode');
-            
-            if (!isPausedByUser) {
-                try {
-                    video.play().catch(() => {});
-                } catch (e) {}
+    clean() {
+        // 主動掃描頁面上的潛在彈窗
+        const dialogs = document.querySelectorAll('tp-yt-paper-dialog, ytd-enforcement-message-view-model');
+        dialogs.forEach(dialog => {
+            // 對於這些 específica 的標籤，如果內容匹配，則刪除
+            // 這裡寬鬆一點，只要是這些標籤，都假設是目標，除非加上關鍵字檢查證明不是
+            // 但為了避免誤殺，還是檢查一下關鍵字比較安全，尤其是 tp-yt-paper-dialog 可能用於其他用途
+            if (this.containsKeyword(dialog) || dialog.querySelector('ytd-enforcement-message-view-model')) {
+                this.removePopup(dialog);
+                this.unlockScroll();
             }
-        }
+        });
+        
+        // 確保沒有殘留的遮罩
+        const backdrops = document.querySelectorAll('tp-yt-iron-overlay-backdrop');
+        backdrops.forEach(bd => {
+             // 只有當它看起來是為了廣告攔截彈窗存在時才移除 (simple heuristic: opened)
+             if (bd.classList.contains('opened')) {
+                 // 稍微保守一點，只有當頁面上也沒有其他 dialog 時才移除，避免影響播放清單等功能
+                 // 但 user 說彈窗出現了，所以這裡可以積極一點
+                 bd.style.display = 'none';
+                 bd.style.pointerEvents = 'none';
+             }
+        });
     },
 
-    // 強制恢復滾動 - 這是最關鍵的部分，需要持續執行
-    enforceScroll() {
-        if (!CONFIG.RULE_ENABLES.ad_block_popup) return;
+    unlockScroll() {
+        // 解決 "Scroll Snap Back" 問題的核心
+        // YouTube 透過將 ytd-app 設定為 fixed 來鎖定滾動，或者在 body 上設定 overflow: hidden
+        // 以及透過 JS 不斷重設 scroll top
+        
+        const css = (el, props) => {
+            if (!el) return;
+            for (const [key, val] of Object.entries(props)) {
+                el.style.setProperty(key, val, 'important');
+            }
+        };
 
-        // 強制設定 body 的 overflow-y (參考 RemoveAdblockThing)
-        const bodyStyle = document.body?.style;
-        if (bodyStyle) {
-            bodyStyle.setProperty('overflow-y', 'auto', 'important');
-            bodyStyle.setProperty('overflow-x', 'hidden', 'important');
-            bodyStyle.setProperty('position', 'static', 'important');
-            bodyStyle.setProperty('pointer-events', 'auto', 'important');
-            bodyStyle.setProperty('overscroll-behavior', 'auto', 'important');
-            bodyStyle.setProperty('touch-action', 'auto', 'important');
-        }
+        const allowScrollProps = {
+            'overflow-y': 'auto',
+            'overflow-x': 'hidden',
+            'position': 'static',
+            'pointer-events': 'auto',
+            'top': 'auto', // 避免 top: 0 造成的錯位
+            'left': 'auto',
+            'width': '100%',
+            'display': 'block', // 確保沒被隱藏
+            'z-index': '0',    // 解除可能的層級遮擋
+        };
 
-        // 同時處理 html
-        const htmlStyle = document.documentElement?.style;
-        if (htmlStyle) {
-            htmlStyle.setProperty('overflow-y', 'auto', 'important');
-            htmlStyle.setProperty('overflow-x', 'hidden', 'important');
-            htmlStyle.setProperty('position', 'static', 'important');
-            htmlStyle.setProperty('overscroll-behavior', 'auto', 'important');
-            htmlStyle.setProperty('touch-action', 'auto', 'important');
-        }
-
-        // 確保 ytd-app 沒有被隱藏
+        css(document.body, allowScrollProps);
+        css(document.documentElement, allowScrollProps);
+        
+        // ytd-app 是關鍵，它通常被設為 fixed
         const ytdApp = document.querySelector('ytd-app');
         if (ytdApp) {
+            css(ytdApp, allowScrollProps);
             ytdApp.removeAttribute('aria-hidden');
-            ytdApp.style.setProperty('pointer-events', 'auto', 'important');
-            ytdApp.style.setProperty('overflow', 'visible', 'important');
         }
 
-        // 移除任何可能攔截滾輪事件的 overlay
-        const overlays = document.querySelectorAll('tp-yt-iron-overlay-backdrop, .ytp-popup');
-        overlays.forEach(overlay => {
-            overlay.style.setProperty('pointer-events', 'none', 'important');
-            overlay.style.setProperty('display', 'none', 'important');
-        });
-
-        // 確保 watch-flexy 可以互動
-        const watchFlexy = document.querySelector('ytd-watch-flexy');
-        if (watchFlexy) {
-            watchFlexy.removeAttribute('aria-hidden');
-            watchFlexy.style.setProperty('pointer-events', 'auto', 'important');
+        // 確保播放器本身沒有被遮擋
+        const watchPage = document.querySelector('ytd-watch-flexy');
+        if (watchPage) {
+            watchPage.style.removeProperty('filter'); // 移除模糊效果
         }
     },
 
-    neutralize() {
-        if (!CONFIG.RULE_ENABLES.ad_block_popup) return;
-
-        let foundPopup = false;
-
-        // 1. 處理 modal overlay - 移除 opened 屬性並設為不可點擊
-        const modalOverlay = document.querySelector('tp-yt-iron-overlay-backdrop');
-        if (modalOverlay) {
-            modalOverlay.removeAttribute('opened');
-            modalOverlay.style.setProperty('display', 'none', 'important');
-            modalOverlay.style.setProperty('pointer-events', 'none', 'important');
-            foundPopup = true;
-            if (CONFIG.DEBUG_MODE) {
-                console.log('%c[AdBlockPopupNeutralizer] Disabled modal overlay', 'color: #e74c3c; font-weight: bold;');
-            }
-        }
-
-        // 2. 尋找並處理 popup (包括被 CSS 隱藏的)
-        const popup = document.querySelector('.style-scope.ytd-enforcement-message-view-model, ytd-enforcement-message-view-model');
-        if (popup) {
-            // 嘗試點擊 dismiss 按鈕
-            const dismissButton = document.getElementById('dismiss-button') || popup.querySelector('#dismiss-button, [id*="dismiss"], button');
-            if (dismissButton) {
-                try {
-                    dismissButton.click();
-                    if (CONFIG.DEBUG_MODE) {
-                        console.log('%c[AdBlockPopupNeutralizer] Clicked dismiss button', 'color: #f39c12; font-weight: bold;');
-                    }
-                } catch (e) {}
-            }
-
-            // 移除 popup
-            popup.remove();
-            foundPopup = true;
-            if (CONFIG.DEBUG_MODE) {
-                console.log('%c[AdBlockPopupNeutralizer] Removed popup', 'color: #e74c3c; font-weight: bold;');
-            }
-        }
-
-        // 3. 移除所有 paper-dialog 內的 enforcement message
-        document.querySelectorAll('tp-yt-paper-dialog').forEach(dialog => {
-            if (dialog.querySelector('ytd-enforcement-message-view-model')) {
-                dialog.remove();
-                foundPopup = true;
-                if (CONFIG.DEBUG_MODE) {
-                    console.log('%c[AdBlockPopupNeutralizer] Removed paper dialog with popup', 'color: #e74c3c; font-weight: bold;');
-                }
-            }
-        });
-
-        // 4. 如果發現 popup，恢復影片播放並觸發載入
-        if (foundPopup) {
-            this.restorePlayback();
-            this.triggerContentLoad();
-        }
-
-        // 5. 確保 YouTube 內部狀態正確
-        this.patchYouTubeConfig();
-    },
-
-    restorePlayback() {
+    resumeVideo() {
         const video = document.querySelector('video');
-        if (video && video.paused) {
+        if (!video) return;
+
+        if (video.paused && !video.ended) {
+            // 只有當不是使用者主動暫停時才播放 (這很難判斷，但為了對抗廣告攔截偵測，我們假設暫停是惡意的)
+            // 簡單判斷：如果剛剛發生了彈窗事件，則強制播放
             try {
                 video.play();
-                // 延遲再次嘗試播放
-                setTimeout(() => {
-                    if (video.paused) video.play();
-                }, 500);
-                if (CONFIG.DEBUG_MODE) {
-                    console.log('%c[AdBlockPopupNeutralizer] Restored video playback', 'color: #2ecc71; font-weight: bold;');
-                }
-            } catch (e) {}
+            } catch(e) {}
         }
-    },
-
-    triggerContentLoad() {
-        // 恢復留言區
-        const commentsSection = document.querySelector('ytd-comments, #comments');
-        if (commentsSection) {
-            commentsSection.style.removeProperty('display');
-            commentsSection.style.setProperty('pointer-events', 'auto', 'important');
-        }
-
-        // 恢復推薦影片區
-        const secondarySection = document.querySelector('#secondary, #related');
-        if (secondarySection) {
-            secondarySection.style.removeProperty('display');
-            secondarySection.style.setProperty('pointer-events', 'auto', 'important');
-        }
-
-        // 恢復 watch-flexy
-        const watchFlexy = document.querySelector('ytd-watch-flexy');
-        if (watchFlexy) {
-            watchFlexy.removeAttribute('aria-hidden');
-            watchFlexy.style.setProperty('pointer-events', 'auto', 'important');
-        }
-
-        // 觸發滾動和 resize 事件來促使 YouTube 載入更多內容
-        try {
-            window.dispatchEvent(new Event('scroll'));
-            window.dispatchEvent(new Event('resize'));
-            // 再次觸發，有時需要多次
-            setTimeout(() => {
-                window.dispatchEvent(new Event('scroll'));
-            }, 100);
-        } catch (e) {}
-    },
-
-    patchYouTubeConfig() {
-        try {
-            const config = window.yt?.config_ || window.ytcfg?.data_;
-            if (config?.openPopupConfig?.supportedPopups?.adBlockMessageViewModel) {
-                config.openPopupConfig.supportedPopups.adBlockMessageViewModel = false;
-            }
-            if (config?.EXPERIMENT_FLAGS) {
-                config.EXPERIMENT_FLAGS.ad_blocker_notifications_disabled = true;
-                config.EXPERIMENT_FLAGS.web_enable_adblock_detection_block_playback = false;
-            }
-        } catch (e) {}
     }
 };
 

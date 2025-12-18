@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.3.2
-// @description  為極致體驗而生的內容過濾器。修復滾輪滾動：攔截 wheel 事件並阻止 YouTube 重設滾動位置。
+// @version      1.3.3
+// @description  為極致體驗而生的內容過濾器。修復滾動鎖定：持續強制滾動屬性 + 自動恢復影片播放。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 1. 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.3.2' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.3.3' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -295,119 +295,53 @@ const StaticCSSManager = {
 const AdBlockPopupNeutralizer = {
     checkInterval: null,
     scrollFixInterval: null,
-    wheelListenerAdded: false,
-    scrollProtectionActive: false,
+    initialized: false,
 
     init() {
-        // 持續監控並修復滾動問題 (每 200ms - 更頻繁)
-        this.scrollFixInterval = setInterval(() => this.enforceScroll(), 200);
-
-        // 定期檢查 popup (每 1000ms)
-        this.checkInterval = setInterval(() => this.neutralize(), 1000);
-
-        // 頁面導航時重新檢查
-        window.addEventListener('yt-navigate-finish', () => {
-            this.wheelListenerAdded = false;
-            this.scrollProtectionActive = false;
-            this.neutralize();
-            this.enableWheelScroll();
-            this.preventScrollReset();
-        });
+        if (this.initialized) return;
+        this.initialized = true;
 
         // 立即執行一次
         this.neutralize();
         this.enforceScroll();
-        this.enableWheelScroll();
-        this.preventScrollReset();
+
+        // 持續監控並修復滾動問題 (每 200ms - 更頻繁)
+        this.scrollFixInterval = setInterval(() => {
+            this.enforceScroll();
+            this.ensureVideoPlaying();
+        }, 200);
+
+        // 定期檢查 popup (每 500ms - 更頻繁)
+        this.checkInterval = setInterval(() => this.neutralize(), 500);
+
+        // 頁面導航時重新檢查
+        window.addEventListener('yt-navigate-finish', () => {
+            setTimeout(() => {
+                this.neutralize();
+                this.enforceScroll();
+            }, 100);
+        });
 
         if (CONFIG.DEBUG_MODE) {
-            console.log('%c[AdBlockPopupNeutralizer] Initialized with wheel scroll fix', 'color: #3498db; font-weight: bold;');
+            console.log('%c[AdBlockPopupNeutralizer] Initialized', 'color: #3498db; font-weight: bold;');
         }
     },
 
-    // 啟用滾輪滾動 - 攔截並重新分發滾輪事件
-    enableWheelScroll() {
-        if (!CONFIG.RULE_ENABLES.ad_block_popup || this.wheelListenerAdded) return;
+    // 確保影片正在播放
+    ensureVideoPlaying() {
+        if (!CONFIG.RULE_ENABLES.ad_block_popup) return;
 
-        // 在捕獲階段攔截 wheel 事件，確保我們最先處理
-        document.addEventListener('wheel', (e) => {
-            // 如果事件已經被處理過，跳過
-            if (e._ytpurifier_processed) return;
-
-            // 標記事件已處理
-            e._ytpurifier_processed = true;
-
-            // 取得滾動目標 - 優先使用 documentElement，其次是 body
-            const scrollTarget = document.scrollingElement || document.documentElement;
+        const video = document.querySelector('video');
+        if (video && video.paused && !video.ended) {
+            // 檢查是否是使用者主動暫停（通過檢查是否有 paused 狀態的播放器）
+            const player = document.querySelector('.html5-video-player');
+            const isPausedByUser = player?.classList.contains('paused-mode');
             
-            // 手動執行滾動
-            if (scrollTarget) {
-                const scrollAmount = e.deltaY;
-                scrollTarget.scrollTop += scrollAmount;
-                
-                // 阻止原始事件繼續傳播（避免被 YouTube 攔截）
-                e.preventDefault();
-                e.stopPropagation();
+            if (!isPausedByUser) {
+                try {
+                    video.play().catch(() => {});
+                } catch (e) {}
             }
-        }, { capture: true, passive: false });
-
-        this.wheelListenerAdded = true;
-
-        if (CONFIG.DEBUG_MODE) {
-            console.log('%c[AdBlockPopupNeutralizer] Wheel scroll listener added', 'color: #9b59b6; font-weight: bold;');
-        }
-    },
-
-    // 防止滾動位置被重設
-    preventScrollReset() {
-        if (!CONFIG.RULE_ENABLES.ad_block_popup || this.scrollProtectionActive) return;
-
-        // 覆蓋 window.scrollTo 來阻止 YouTube 強制重設滾動位置
-        const originalScrollTo = window.scrollTo.bind(window);
-        const originalScrollBy = window.scrollBy.bind(window);
-        
-        window.scrollTo = (...args) => {
-            // 檢查是否是嘗試滾動到頂部 (可能是 YouTube 強制重設)
-            const isResetToTop = (args[0] === 0 && args[1] === 0) || 
-                                 (args[0]?.top === 0 && args[0]?.left === 0) ||
-                                 (args[0]?.top === 0 && args[0]?.behavior);
-            
-            if (isResetToTop) {
-                if (CONFIG.DEBUG_MODE) {
-                    console.log('%c[AdBlockPopupNeutralizer] Blocked scroll reset attempt', 'color: #e74c3c; font-weight: bold;');
-                }
-                return; // 阻止重設到頂部
-            }
-            
-            // 允許其他正常的滾動操作
-            return originalScrollTo(...args);
-        };
-
-        window.scrollBy = (...args) => {
-            return originalScrollBy(...args);
-        };
-
-        // 也覆蓋 Element.prototype.scrollTo 以防止容器級別的滾動重設
-        const originalElementScrollTo = Element.prototype.scrollTo;
-        Element.prototype.scrollTo = function(...args) {
-            // 只阻止對 documentElement 或 body 的重設
-            if (this === document.documentElement || this === document.body) {
-                const isResetToTop = (args[0] === 0 && args[1] === 0) || 
-                                     (args[0]?.top === 0);
-                if (isResetToTop) {
-                    if (CONFIG.DEBUG_MODE) {
-                        console.log('%c[AdBlockPopupNeutralizer] Blocked element scroll reset', 'color: #e74c3c; font-weight: bold;');
-                    }
-                    return;
-                }
-            }
-            return originalElementScrollTo.apply(this, args);
-        };
-
-        this.scrollProtectionActive = true;
-
-        if (CONFIG.DEBUG_MODE) {
-            console.log('%c[AdBlockPopupNeutralizer] Scroll reset protection active', 'color: #27ae60; font-weight: bold;');
         }
     },
 
@@ -423,6 +357,7 @@ const AdBlockPopupNeutralizer = {
             bodyStyle.setProperty('position', 'static', 'important');
             bodyStyle.setProperty('pointer-events', 'auto', 'important');
             bodyStyle.setProperty('overscroll-behavior', 'auto', 'important');
+            bodyStyle.setProperty('touch-action', 'auto', 'important');
         }
 
         // 同時處理 html
@@ -432,6 +367,7 @@ const AdBlockPopupNeutralizer = {
             htmlStyle.setProperty('overflow-x', 'hidden', 'important');
             htmlStyle.setProperty('position', 'static', 'important');
             htmlStyle.setProperty('overscroll-behavior', 'auto', 'important');
+            htmlStyle.setProperty('touch-action', 'auto', 'important');
         }
 
         // 確保 ytd-app 沒有被隱藏
@@ -439,13 +375,22 @@ const AdBlockPopupNeutralizer = {
         if (ytdApp) {
             ytdApp.removeAttribute('aria-hidden');
             ytdApp.style.setProperty('pointer-events', 'auto', 'important');
+            ytdApp.style.setProperty('overflow', 'visible', 'important');
         }
 
         // 移除任何可能攔截滾輪事件的 overlay
         const overlays = document.querySelectorAll('tp-yt-iron-overlay-backdrop, .ytp-popup');
         overlays.forEach(overlay => {
             overlay.style.setProperty('pointer-events', 'none', 'important');
+            overlay.style.setProperty('display', 'none', 'important');
         });
+
+        // 確保 watch-flexy 可以互動
+        const watchFlexy = document.querySelector('ytd-watch-flexy');
+        if (watchFlexy) {
+            watchFlexy.removeAttribute('aria-hidden');
+            watchFlexy.style.setProperty('pointer-events', 'auto', 'important');
+        }
     },
 
     neutralize() {
@@ -502,11 +447,6 @@ const AdBlockPopupNeutralizer = {
         if (foundPopup) {
             this.restorePlayback();
             this.triggerContentLoad();
-            // 重新啟用滾輪滾動保護
-            this.wheelListenerAdded = false;
-            this.scrollProtectionActive = false;
-            this.enableWheelScroll();
-            this.preventScrollReset();
         }
 
         // 5. 確保 YouTube 內部狀態正確

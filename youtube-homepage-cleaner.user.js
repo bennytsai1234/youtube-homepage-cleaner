@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.3.6
-// @description  為極致體驗而生的內容過濾器。修復滾動鎖定：持續強制滾動屬性 + 自動恢復影片播放。
+// @version      1.3.7
+// @description  為極致體驗而生的內容過濾器。修復會員視窗誤殺問題 (白名單機制)。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @grant        GM_info
@@ -22,7 +22,7 @@
 'use strict';
 
 // --- 1. 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.3.6' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.3.7' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -370,16 +370,45 @@ const AdBlockPopupNeutralizer = {
         
         // 1. 檢查特定標籤
         const tagName = node.tagName.toLowerCase();
-        if (tagName === 'tp-yt-paper-dialog' || tagName === 'ytd-enforcement-message-view-model') {
-            return true; // 這些標籤幾乎總是反廣告相關 (或者我們可以檢查關鍵字以防萬一，但既然是淨化大師，預設應積極)
+        
+        // ytd-enforcement-message-view-model 是廣告攔截專屬標籤，直接判定
+        if (tagName === 'ytd-enforcement-message-view-model') {
+            return true;
         }
 
-        // 2. 檢查特定的 class 或 id (legacy support)
+        // 2. tp-yt-paper-dialog 需要謹慎檢查，因為它也用於會員視窗等合法對話框
+        if (tagName === 'tp-yt-paper-dialog') {
+            // ★ 白名單檢查：如果包含這些元素，絕對不是廣告警告
+            const whitelistSelectors = [
+                'ytd-sponsorships-offer-renderer',   // 會員加入視窗
+                'ytd-about-channel-renderer',         // 頻道資訊視窗
+                'ytd-report-form-modal-renderer',     // 檢舉視窗
+                'ytd-multi-page-menu-renderer',       // 通用選單
+                'ytd-playlist-add-to-option-renderer' // 加入播放清單視窗
+            ];
+            
+            for (const sel of whitelistSelectors) {
+                if (node.querySelector(sel)) {
+                    if (CONFIG.DEBUG_MODE) logger.info(`✅ Whitelist dialog detected: ${sel}`);
+                    return false;
+                }
+            }
+            
+            // 檢查是否包含廣告攔截專屬標籤
+            if (node.querySelector('ytd-enforcement-message-view-model')) {
+                return true;
+            }
+            
+            // 深度關鍵字檢查
+            return this.containsKeyword(node);
+        }
+
+        // 3. 檢查特定的 class 或 id (legacy support)
         if (node.classList.contains('ytd-enforcement-message-view-model') || node.id === 'error-screen') {
             return true;
         }
 
-        // 3. 深度檢查內容關鍵字 (針對一般容器)
+        // 4. 深度檢查內容關鍵字 (針對一般容器)
         // 為了效能，只檢查包含大量文字的節點
         if (node.textContent.length > 10 && node.textContent.length < 3000) {
             return this.containsKeyword(node);

@@ -295,8 +295,7 @@ const StaticCSSManager = {
 // 參考 RemoveAdblockThing 專案的實作方式，採用更積極的策略
 const AdBlockPopupNeutralizer = {
     observer: null,
-    scrollInterval: null,
-    videoInterval: null,
+    heartbeatId: null,
     lastDetectionTime: 0,
     
     // 多語言關鍵字偵測 (Detect keywords in multiple languages)
@@ -316,13 +315,13 @@ const AdBlockPopupNeutralizer = {
         // 1. 啟動 MutationObserver 監控彈窗 (Lightning Speed)
         this.startObserver();
         
-        // 2. 啟動定時器進行備用檢查 (Backup Check)
-        this.startTimers();
+        // 2. 啟動 Heartbeat 循環 (單一迴圈處理所有定期任務)
+        this.startHeartbeat();
         
         // 3. 立即執行一次清潔
         this.clean();
 
-        if (CONFIG.DEBUG_MODE) logger.info('🛡️ AdBlockPopupNeutralizer Activated (Text-Based Mode)');
+        if (CONFIG.DEBUG_MODE) logger.info('🛡️ AdBlockPopupNeutralizer Activated (Heartbeat Mode)');
     },
 
     startObserver() {
@@ -351,15 +350,16 @@ const AdBlockPopupNeutralizer = {
         this.observer.observe(target, { childList: true, subtree: true });
     },
 
-    startTimers() {
-        // 定期檢查 (每 500ms)
-        setInterval(() => this.clean(), 500);
-
-        // 影片播放守護 (每 500ms)
-        this.videoInterval = setInterval(() => this.resumeVideo(), 500);
-
-        // 滾動鎖定守護 (每 200ms - 針對 "Snap back" 問題)
-        this.scrollInterval = setInterval(() => this.unlockScroll(), 200);
+    startHeartbeat() {
+        const beat = () => {
+            this.clean();       // 檢查彈窗
+            this.unlockScroll(); // 檢查滾動鎖定
+            this.resumeVideo();  // 檢查影片暫停
+            
+            // 使用 setTimeout 遞迴模擬 interval，約每 500ms 執行一次，減少資源消耗
+            this.heartbeatId = setTimeout(() => requestAnimationFrame(beat), 500);
+        };
+        requestAnimationFrame(beat);
     },
 
     isAdBlockPopup(node) {

@@ -5,6 +5,7 @@
 // @description  為極致體驗而生的內容過濾器。修復會員視窗誤殺問題 (白名單機制)。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
+// @exclude      https://www.youtube.com/embed/*
 // @grant        GM_info
 // @grant        GM_addStyle
 // @grant        GM_setValue
@@ -92,7 +93,8 @@ const SELECTORS = {
         'ytd-video-renderer', 'ytd-compact-video-renderer', 'ytd-reel-shelf-renderer',
         'ytd-ad-slot-renderer', 'yt-lockup-view-model', 'ytd-statement-banner-renderer',
         'grid-shelf-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer',
-        'ytd-grid-video-renderer', 'ytd-info-panel-container-renderer'
+        'ytd-grid-video-renderer', 'ytd-info-panel-container-renderer',
+        'feed-ad-metadata-view-model', 'ad-badge-view-model'
     ],
     CLICKABLE_CONTAINERS: [
         'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer',
@@ -267,7 +269,7 @@ const StaticCSSManager = {
 
             // --- Hiding containers using :has() ---
             // These apply to individual video/playlist items
-            { configKey: 'ad_sponsor', containerSelectors: videoItemContainers, innerSelector: '[aria-label*="廣告"], [aria-label*="Sponsor"], [aria-label="贊助商廣告"]' },
+            { configKey: 'ad_sponsor', containerSelectors: videoItemContainers, innerSelector: '[aria-label*="廣告"], [aria-label*="Sponsor"], [aria-label="贊助商廣告"], ad-badge-view-model, feed-ad-metadata-view-model' },
             { configKey: 'members_only', containerSelectors: videoItemContainers, innerSelector: '[aria-label*="會員專屬"]' },
             { configKey: 'shorts_item', containerSelectors: videoItemContainers, innerSelector: 'a[href*="/shorts/"]' },
             { configKey: 'mix_only', containerSelectors: videoItemContainers, innerSelector: 'a[aria-label*="合輯"], a[aria-label*="Mix"]' },

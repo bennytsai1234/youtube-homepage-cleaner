@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.3.7
-// @description  為極致體驗而生的內容過濾器。修復會員視窗誤殺問題 (白名單機制)。
+// @version      1.4.0
+// @description  為極致體驗而生的內容過濾器。重構優化版本。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -23,7 +23,7 @@
 'use strict';
 
 // --- 1. 設定與常數 ---
-const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.3.7' };
+const SCRIPT_INFO = GM_info?.script || { name: 'YouTube 淨化大師', version: '1.4.0' };
 const ATTRS = {
     PROCESSED: 'data-yt-purifier-processed',
     HIDDEN_REASON: 'data-yt-purifier-hidden-reason',
@@ -111,17 +111,11 @@ const SELECTORS = {
 }.init();
 
 // --- 3. 工具函數 ---
+// 通用工具：camelCase 轉 snake_case (用於 GM_setValue key)
+const toSnakeCase = (str) => str.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`);
+
 const utils = {
     debounce: (func, delay) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => func(...a), delay); }; },
-    injectCSS: () => {
-        // This is now handled by the much more powerful StaticCSSManager
-        if (typeof GM_addStyle !== 'function') {
-            const style = document.createElement('style');
-            style.type = 'text/css';
-            style.id = 'yt-purifier-fallback-style';
-            (document.head || document.documentElement).appendChild(style);
-        }
-    },
 
     unitMultiplier: (u) => {
         if (!u) return 1;
@@ -568,7 +562,7 @@ const Enhancer = {
     }
 };
 
-// --- 7. 核心規則引擎 (動態) ---
+// --- 8. 核心規則引擎 (動態) ---
 const RuleEngine = {
     ruleCache: new Map(),
     globalRules: [],
@@ -746,7 +740,7 @@ const RuleEngine = {
     }
 };
 
-// --- 8. 主控台與菜單系統 ---
+// --- 9. 主控台與菜單系統 ---
 const Main = {
     menuHandle: null,
     menuStructure: null,
@@ -875,7 +869,7 @@ const Main = {
                     CONFIG[keys[0]] = ruleSet;
                     GM_setValue('ruleEnables', ruleSet);
                 }
-                else { CONFIG[keys[0]] = value; GM_setValue(selected.config.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`), value); }
+                else { CONFIG[keys[0]] = value; GM_setValue(toSnakeCase(selected.config), value); }
                 if (selected.afterAction) selected.afterAction();
                 break;
             }
@@ -884,7 +878,7 @@ const Main = {
                 const input = prompt(selected.promptText, currentVal);
                 if (input !== null) {
                     const newVal = parseInt(input, 10);
-                    if (!isNaN(newVal) && newVal >= 0) { CONFIG[selected.config] = newVal; GM_setValue(selected.config.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`), newVal); if (selected.afterAction) selected.afterAction(); }
+                    if (!isNaN(newVal) && newVal >= 0) { CONFIG[selected.config] = newVal; GM_setValue(toSnakeCase(selected.config), newVal); if (selected.afterAction) selected.afterAction(); }
                     else { alert('❌ 請輸入有效的正整數。'); }
                 }
                 break;
@@ -905,7 +899,7 @@ const Main = {
                 const items = prompt(`輸入要新增的${itemName} (用逗號分隔)`);
                 if (items) {
                     const toAdd = items.split(',').map(i => i.trim().toLowerCase()).filter(i => i && !list.includes(i));
-                    if (toAdd.length > 0) { list.push(...toAdd); GM_setValue(configKey.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`), list); this.resetAndRescan(); }
+                    if (toAdd.length > 0) { list.push(...toAdd); GM_setValue(toSnakeCase(configKey), list); this.resetAndRescan(); }
                 }
                 break;
             }
@@ -913,11 +907,11 @@ const Main = {
                 const item = prompt(`輸入要刪除的${itemName}:\n[ ${list.join(', ')} ]`);
                 if (item) {
                     const idx = list.findIndex(i => i.toLowerCase() === item.trim().toLowerCase());
-                    if (idx > -1) { list.splice(idx, 1); GM_setValue(configKey.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`), list); this.resetAndRescan(); } else { alert('項目不存在'); }
+                    if (idx > -1) { list.splice(idx, 1); GM_setValue(toSnakeCase(configKey), list); this.resetAndRescan(); } else { alert('項目不存在'); }
                 }
                 break;
             }
-            case 3: if (confirm(`⚠️ 確定要清空所有${itemName}黑名單嗎？`)) { list.length = 0; GM_setValue(configKey.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`), list); this.resetAndRescan(); } break;
+            case 3: if (confirm(`⚠️ 確定要清空所有${itemName}黑名單嗎？`)) { list.length = 0; GM_setValue(toSnakeCase(configKey), list); this.resetAndRescan(); } break;
             case 0: return this.menuStructure.items['4'];
         }
         return () => this._manageList(configKey, itemName);
@@ -942,7 +936,7 @@ const Main = {
 
     _resetAllToDefaults() {
         Object.keys(DEFAULT_CONFIG).forEach(key => {
-            const gmKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+            const gmKey = toSnakeCase(key);
             CONFIG[key] = DEFAULT_CONFIG[key];
             GM_setValue(gmKey, DEFAULT_CONFIG[key]);
         });

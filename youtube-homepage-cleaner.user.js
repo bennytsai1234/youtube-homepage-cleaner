@@ -49,6 +49,7 @@ const DEFAULT_RULE_ENABLES = {
     inline_survey: true,
     clarify_box: true,
     explore_topics: true,
+    members_priority: true,
 };
 
 const DEFAULT_CONFIG = {
@@ -604,6 +605,7 @@ const RuleEngine = {
             { id: 'popular_gaming_shelf', name: '熱門遊戲區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: SELECTORS.TITLE_TEXT, keyword: /^熱門遊戲直播$/i }] } },
             { id: 'more_from_game_shelf', name: '「更多相關內容」區塊', scope: 'ytd-rich-shelf-renderer, ytd-rich-section-renderer', conditions: { any: [{ type: 'text', selector: '#subtitle', keyword: /^更多此遊戲相關內容$/i }] } },
             { id: 'trending_playlist', name: '發燒影片/熱門內容', scope: 'ytd-rich-item-renderer, yt-lockup-view-model', conditions: { any: [{ type: 'text', selector: 'h3 a, #video-title', keyword: /發燒影片|Trending/i }] } },
+            { id: 'members_priority', name: '會員優先 (Early Access)', scope: 'ytd-rich-item-renderer, ytd-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model', conditions: { any: [ { type: 'text', selector: '.yt-badge-shape__text, .badge-shape-wiz__text', keyword: /會員優先|Members Early Access/i } ] } },
         ];
     },
 
@@ -788,6 +790,7 @@ const Main = {
             { id: 'ad_block_popup', name: '反廣告攔截彈窗' },
             { id: 'ad_sponsor', name: '廣告/促銷' },
             { id: 'members_only', name: '會員專屬' },
+            { id: 'members_priority', name: '會員優先 (Early Access)' },
             { id: 'shorts_item', name: 'Shorts (單個)'},
             { id: 'mix_only', name: '合輯 (Mix)' },
             { id: 'premium_banner', name: 'Premium 推廣' },

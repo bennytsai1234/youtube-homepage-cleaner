@@ -51,3 +51,17 @@
     *   當發現 `run_command` 沒有預期輸出時，**強制**改用 `run_command` 啟動一個持續的 Shell Session (如 `cmd`)，接著使用 `send_command_input` 發送指令，以確保能獲取執行結果。
 
 ---
+
+### **第五章：專案特定記憶 (Project Specific Memories)**
+
+#### **`youtube-homepage-cleaner` (Userscript)**
+*   **技術棧**: Vanilla JS, Tampermonkey API, CSS `:has()` selector.
+*   **核心策略**: 
+    1.  **混合過濾**: 優先使用「靜態 CSS」處理已知靜態元素（零延遲），再搭配「動態 MutationObserver」處理非同步加載內容。
+    2.  **效能平衡**: 低觀看數過濾應限制在首頁與搜尋頁，避免過度掃描。
+    3.  **UI 一致性**: 通向全連結「一律開啟新分頁」可顯著提升 YouTube 探索體驗。
+*   **版本控制紀錄**:
+    *   v1.5.2: 成功解決了 Windows 環境下的 Git 亂碼問題，並優化了反噴機制。
+    *   v1.4.0+: 精簡了日誌輸出，平衡了 Debug 必要性與效能。
+
+---

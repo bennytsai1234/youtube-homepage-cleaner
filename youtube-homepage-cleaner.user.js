@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      2.0.0-beta.1
-// @description  [BETA] 為極致體驗而生的內容過濾器。此為測試版本，可能不穩定。
+// @version      2.0.0-rc
+// @description  [BETA] 為極致體驗而生的內容過濾器。v2.0.0-rc: 全新架構 + 效能優化 + 國際化支援。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -44,15 +44,18 @@
         VIDEO_CONTAINERS: [
             'ytd-rich-item-renderer',
             'ytd-video-renderer',
-            'ytd-compact-video-renderer',
+            'ytd-compact-video-renderer',  // 播放頁側邊欄
             'ytd-grid-video-renderer',
-            'yt-lockup-view-model'
+            'yt-lockup-view-model',
+            'ytd-compact-radio-renderer',   // 播放頁自動播放清單
+            'ytd-playlist-panel-video-renderer'  // 播放清單面板
         ],
         SECTION_CONTAINERS: [
             'ytd-rich-section-renderer',
             'ytd-rich-shelf-renderer',
             'ytd-reel-shelf-renderer',
-            'grid-shelf-view-model'
+            'grid-shelf-view-model',
+            'ytd-watch-next-secondary-results-renderer'  // 播放頁推薦區塊
         ],
 
         // Metadata 選擇器 (新舊版相容)
@@ -494,7 +497,16 @@
         }
 
         checkAndClean() {
-            const dialogs = document.querySelectorAll('tp-yt-paper-dialog, ytd-enforcement-message-view-model');
+            // 更積極的彈窗選擇器
+            const popupSelectors = [
+                'tp-yt-paper-dialog',
+                'ytd-enforcement-message-view-model',
+                'yt-playability-error-supported-renderers',
+                'ytd-popup-container tp-yt-paper-dialog',
+                '[role="dialog"]:has(ytd-enforcement-message-view-model)'
+            ];
+
+            const dialogs = document.querySelectorAll(popupSelectors.join(', '));
             let detected = false;
 
             for (const dialog of dialogs) {
@@ -503,8 +515,8 @@
 
                 if (this.isAdBlockPopup(dialog)) {
                     // 嘗試點擊關閉按鈕
-                    const dismissBtn = dialog.querySelector('[aria-label="Close"], #dismiss-button, [aria-label="可能有風險"]');
-                    if (dismissBtn) dismissBtn.click();
+                    const dismissBtns = dialog.querySelectorAll('[aria-label="Close"], #dismiss-button, [aria-label="可能有風險"], .yt-spec-button-shape-next--call-to-action');
+                    dismissBtns.forEach(btn => btn.click());
 
                     dialog.remove();
                     detected = true;
@@ -513,10 +525,12 @@
             }
 
             if (detected) {
-                // 移除背景遮罩
-                document.querySelectorAll('tp-yt-iron-overlay-backdrop').forEach(b => {
-                    b.style.display = 'none';
-                    b.remove();
+                // 移除背景遮罩 (包含所有可能的遮罩)
+                document.querySelectorAll('tp-yt-iron-overlay-backdrop, .ytd-popup-container, [style*="z-index: 9999"]').forEach(b => {
+                    if (b.classList.contains('opened') || b.style.display !== 'none') {
+                        b.style.display = 'none';
+                        b.remove();
+                    }
                 });
                 this.unlockScroll();
                 this.resumeVideo();
@@ -646,10 +660,37 @@
             this.config = config;
             this.customRules = new CustomRuleManager(config);
         }
-
+        // 使用 requestIdleCallback 分批處理以優化效能
         processPage() {
-            const elements = document.querySelectorAll(SELECTORS.allContainers);
-            for (const el of elements) this.processElement(el);
+            const elements = Array.from(document.querySelectorAll(SELECTORS.allContainers));
+            const unprocessed = elements.filter(el => !el.dataset.ypChecked);
+
+            if (unprocessed.length === 0) return;
+
+            // 如果瀏覽器支援 requestIdleCallback，使用分批處理
+            if ('requestIdleCallback' in window) {
+                this._processBatch(unprocessed, 0);
+            } else {
+                // Fallback: 直接處理
+                for (const el of unprocessed) this.processElement(el);
+            }
+        }
+
+        _processBatch(elements, startIndex, batchSize = 20) {
+            requestIdleCallback((deadline) => {
+                let i = startIndex;
+                // 在空閒時間內處理盡可能多的元素
+                while (i < elements.length && (deadline.timeRemaining() > 0 || deadline.didTimeout)) {
+                    this.processElement(elements[i]);
+                    i++;
+                    // 每批最多處理 batchSize 個
+                    if (i - startIndex >= batchSize) break;
+                }
+                // 如果還有未處理的元素，繼續排程
+                if (i < elements.length) {
+                    this._processBatch(elements, i, batchSize);
+                }
+            }, { timeout: 500 }); // 500ms 超時保證
         }
 
         processElement(element) {
@@ -777,7 +818,7 @@
         showMainMenu() {
             const i = (k) => this.config.get(k) ? '✅' : '❌';
             const statsInfo = FilterStats.session.total > 0 ? ` (${FilterStats.session.total})` : '';
-            const choice = prompt(`【 YouTube 淨化大師 v2.0.0-beta.1 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n8. 📊 查看過濾統計${statsInfo}\n\n輸入選項:`);
+            const choice = prompt(`【 YouTube 淨化大師 v2.0.0-rc 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n8. 📊 過濾統計${statsInfo}\n9. 💾 匯出/匯入設定\n\n輸入選項:`);
             if (choice) this.handleMenu(choice);
         }
         handleMenu(c) {
@@ -790,12 +831,57 @@
                 case '6': this.toggle('DEBUG_MODE'); break;
                 case '7': if (confirm('重設?')) { Object.keys(this.config.defaults).forEach(k => this.config.set(k, this.config.defaults[k])); this.update('', null); } break;
                 case '8': this.showStats(); break;
+                case '9': this.showExportImportMenu(); break;
             }
         }
         showStats() {
             const summary = FilterStats.getSummary();
             alert(`【 過濾統計 】\n\n${summary || '尚未過濾任何內容'}`);
             this.showMainMenu();
+        }
+        showExportImportMenu() {
+            const c = prompt('【 設定管理 】\n\n1. 📤 匯出設定\n2. 📥 匯入設定\n0. 返回');
+            if (c === '1') this.exportSettings();
+            else if (c === '2') this.importSettings();
+            else if (c === '0') this.showMainMenu();
+        }
+        exportSettings() {
+            const exportData = {
+                version: '2.0.0-beta',
+                timestamp: new Date().toISOString(),
+                settings: this.config.state
+            };
+            const json = JSON.stringify(exportData, null, 2);
+
+            // 複製到剪貼簿
+            navigator.clipboard.writeText(json).then(() => {
+                alert('✅ 設定已複製到剪貼簿！\n\n請將此 JSON 保存到安全的地方。');
+            }).catch(() => {
+                // Fallback: 顯示在 prompt 中讓用戶手動複製
+                prompt('請複製以下設定 (Ctrl+C):', json);
+            });
+            this.showExportImportMenu();
+        }
+        importSettings() {
+            const json = prompt('請貼上設定 JSON:');
+            if (!json) { this.showExportImportMenu(); return; }
+
+            try {
+                const data = JSON.parse(json);
+                if (!data.settings) throw new Error('無效的設定格式');
+
+                // 合併設定
+                for (const key in data.settings) {
+                    if (key in this.config.defaults) {
+                        this.config.set(key, data.settings[key]);
+                    }
+                }
+                alert('✅ 設定已成功匯入！');
+                this.onRefresh();
+            } catch (e) {
+                alert('❌ 匯入失敗: ' + e.message);
+            }
+            this.showExportImportMenu();
         }
         showRuleMenu() {
             const r = this.config.get('RULE_ENABLES'); const k = Object.keys(r);
@@ -875,7 +961,7 @@
             });
 
             this.filter.processPage();
-            Logger.info(`🚀 YouTube 淨化大師 v2.0.0-beta.1 啟動`);
+            Logger.info(`🚀 YouTube 淨化大師 v2.0.0-rc 啟動`);
         }
 
         refresh() {

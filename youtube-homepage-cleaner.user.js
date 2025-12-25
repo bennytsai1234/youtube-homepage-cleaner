@@ -172,7 +172,18 @@
                 threshold_prompt: '閾值:',
                 reset_confirm: '重設?',
                 lang_title: '【 選擇語言 】',
-                back: '返回'
+                back: '返回',
+                adv_keyword_filter: '關鍵字過濾',
+                adv_keyword_list: '✏️ 關鍵字清單',
+                adv_channel_filter: '頻道過濾',
+                adv_channel_list: '✏️ 頻道清單',
+                adv_duration_filter: '長度過濾',
+                adv_duration_set: '⏱️ 設定長度',
+                adv_min: '最短(分):',
+                adv_max: '最長(分):',
+                adv_add: '新增',
+                adv_remove: '刪除',
+                adv_clear: '清空'
             },
             'zh-CN': {
                 title: 'YouTube 净化大师',
@@ -203,7 +214,18 @@
                 threshold_prompt: '阈值:',
                 reset_confirm: '重置?',
                 lang_title: '【 选择语言 】',
-                back: '返回'
+                back: '返回',
+                adv_keyword_filter: '关键字过滤',
+                adv_keyword_list: '✏️ 关键字列表',
+                adv_channel_filter: '频道过滤',
+                adv_channel_list: '✏️ 频道列表',
+                adv_duration_filter: '时长过滤',
+                adv_duration_set: '⏱️ 设置时长',
+                adv_min: '最短(分):',
+                adv_max: '最长(分):',
+                adv_add: '新增',
+                adv_remove: '删除',
+                adv_clear: '清空'
             },
             'en': {
                 title: 'YouTube Purifier',
@@ -234,7 +256,18 @@
                 threshold_prompt: 'Threshold:',
                 reset_confirm: 'Reset?',
                 lang_title: '【 Select Language 】',
-                back: 'Back'
+                back: 'Back',
+                adv_keyword_filter: 'Keyword Filter',
+                adv_keyword_list: '✏️ Keyword List',
+                adv_channel_filter: 'Channel Filter',
+                adv_channel_list: '✏️ Channel List',
+                adv_duration_filter: 'Duration Filter',
+                adv_duration_set: '⏱️ Set Duration',
+                adv_min: 'Min (min):',
+                adv_max: 'Max (min):',
+                adv_add: 'Add',
+                adv_remove: 'Remove',
+                adv_clear: 'Clear'
             },
             'ja': {
                 title: 'YouTube クリーナー',
@@ -265,8 +298,124 @@
                 threshold_prompt: '閾値:',
                 reset_confirm: 'リセットしますか?',
                 lang_title: '【 言語選択 】',
-                back: '戻る'
+                back: '戻る',
+                adv_keyword_filter: 'キーワードフィルター',
+                adv_keyword_list: '✏️ キーワードリスト',
+                adv_channel_filter: 'チャンネルフィルター',
+                adv_channel_list: '✏️ チャンネルリスト',
+                adv_duration_filter: '長さフィルター',
+                adv_duration_set: '⏱️ 長さ設定',
+                adv_min: '最短(分):',
+                adv_max: '最長(分):',
+                adv_add: '追加',
+                adv_remove: '削除',
+                adv_clear: 'クリア'
             }
+        },
+
+        // 規則名稱翻譯
+        ruleNames: {
+            'zh-TW': {
+                ad_block_popup: '廣告阻擋彈窗',
+                ad_sponsor: '廣告/贊助',
+                members_only: '會員專屬',
+                shorts_item: 'Shorts 項目',
+                mix_only: '合輯',
+                premium_banner: 'Premium 橫幅',
+                news_block: '新聞區塊',
+                shorts_block: 'Shorts 區塊',
+                posts_block: '社群貼文',
+                playables_block: '可玩內容',
+                fundraiser_block: '募款活動',
+                shorts_grid_shelf: 'Shorts 網格',
+                movies_shelf: '電影推薦',
+                youtube_featured_shelf: 'YouTube 精選',
+                popular_gaming_shelf: '熱門遊戲',
+                more_from_game_shelf: '更多遊戲內容',
+                trending_playlist: '熱門播放清單',
+                inline_survey: '問卷調查',
+                clarify_box: '資訊框',
+                explore_topics: '探索主題',
+                recommended_playlists: '推薦播放清單',
+                members_early_access: '會員搶先看'
+            },
+            'zh-CN': {
+                ad_block_popup: '广告拦截弹窗',
+                ad_sponsor: '广告/赞助',
+                members_only: '会员专属',
+                shorts_item: 'Shorts 项目',
+                mix_only: '合辑',
+                premium_banner: 'Premium 横幅',
+                news_block: '新闻区块',
+                shorts_block: 'Shorts 区块',
+                posts_block: '社区帖子',
+                playables_block: '可玩内容',
+                fundraiser_block: '募款活动',
+                shorts_grid_shelf: 'Shorts 网格',
+                movies_shelf: '电影推荐',
+                youtube_featured_shelf: 'YouTube 精选',
+                popular_gaming_shelf: '热门游戏',
+                more_from_game_shelf: '更多游戏内容',
+                trending_playlist: '热门播放列表',
+                inline_survey: '问卷调查',
+                clarify_box: '信息框',
+                explore_topics: '探索主题',
+                recommended_playlists: '推荐播放列表',
+                members_early_access: '会员抢先看'
+            },
+            'en': {
+                ad_block_popup: 'Ad-block Popup',
+                ad_sponsor: 'Ads / Sponsors',
+                members_only: 'Members Only',
+                shorts_item: 'Shorts Items',
+                mix_only: 'Mix Playlists',
+                premium_banner: 'Premium Banner',
+                news_block: 'News Section',
+                shorts_block: 'Shorts Section',
+                posts_block: 'Community Posts',
+                playables_block: 'Playables',
+                fundraiser_block: 'Fundraiser',
+                shorts_grid_shelf: 'Shorts Grid',
+                movies_shelf: 'Movies Shelf',
+                youtube_featured_shelf: 'YouTube Featured',
+                popular_gaming_shelf: 'Popular Gaming',
+                more_from_game_shelf: 'More from Games',
+                trending_playlist: 'Trending Playlist',
+                inline_survey: 'Surveys',
+                clarify_box: 'Clarify Box',
+                explore_topics: 'Explore Topics',
+                recommended_playlists: 'Recommended Playlists',
+                members_early_access: 'Members Early Access'
+            },
+            'ja': {
+                ad_block_popup: '広告ブロックポップアップ',
+                ad_sponsor: '広告/スポンサー',
+                members_only: 'メンバー限定',
+                shorts_item: 'Shorts アイテム',
+                mix_only: 'ミックス',
+                premium_banner: 'Premium バナー',
+                news_block: 'ニュースセクション',
+                shorts_block: 'Shorts セクション',
+                posts_block: 'コミュニティ投稿',
+                playables_block: 'プレイアブル',
+                fundraiser_block: '募金活動',
+                shorts_grid_shelf: 'Shorts グリッド',
+                movies_shelf: '映画のおすすめ',
+                youtube_featured_shelf: 'YouTube おすすめ',
+                popular_gaming_shelf: '人気ゲーム',
+                more_from_game_shelf: 'ゲーム関連',
+                trending_playlist: '急上昇プレイリスト',
+                inline_survey: 'アンケート',
+                clarify_box: '情報ボックス',
+                explore_topics: 'トピックを探す',
+                recommended_playlists: 'おすすめプレイリスト',
+                members_early_access: 'メンバー先行'
+            }
+        },
+
+        // 取得規則顯示名稱
+        getRuleName(ruleKey) {
+            return this.ruleNames[this.lang]?.[ruleKey] || this.ruleNames['en'][ruleKey] || ruleKey;
         },
 
         // 自動偵測語言
@@ -1087,17 +1236,25 @@
         }
         showRuleMenu() {
             const r = this.config.get('RULE_ENABLES'); const k = Object.keys(r);
-            const c = prompt(`${this.t('rules_title')} ${this.t('rules_back')}\n` + k.map((key, i) => `${i + 1}. [${r[key] ? '✅' : '❌'}] ${key}`).join('\n'));
+            const c = prompt(`${this.t('rules_title')} ${this.t('rules_back')}\n` + k.map((key, i) => `${i + 1}. [${r[key] ? '✅' : '❌'}] ${I18N.getRuleName(key)}`).join('\n'));
             if (c && c !== '0') { this.config.toggleRule(k[parseInt(c) - 1]); this.onRefresh(); this.showRuleMenu(); } else if (c === '0') this.showMainMenu();
         }
         showAdvancedMenu() {
             const i = (k) => this.config.get(k) ? '✅' : '❌';
-            const c = prompt(`1. ${i('ENABLE_KEYWORD_FILTER')} 關鍵字過濾\n2. ✏️ 關鍵字清單\n3. ${i('ENABLE_CHANNEL_FILTER')} 頻道過濾\n4. ✏️ 頻道清單\n5. ${i('ENABLE_DURATION_FILTER')} 長度過濾\n6. ⏱️ 設定長度\n0. 返回`);
+            const c = prompt(
+                `1. ${i('ENABLE_KEYWORD_FILTER')} ${this.t('adv_keyword_filter')}\n` +
+                `2. ${this.t('adv_keyword_list')}\n` +
+                `3. ${i('ENABLE_CHANNEL_FILTER')} ${this.t('adv_channel_filter')}\n` +
+                `4. ${this.t('adv_channel_list')}\n` +
+                `5. ${i('ENABLE_DURATION_FILTER')} ${this.t('adv_duration_filter')}\n` +
+                `6. ${this.t('adv_duration_set')}\n` +
+                `0. ${this.t('back')}`
+            );
             if (c === '1' || c === '3' || c === '5') this.toggle(c === '1' ? 'ENABLE_KEYWORD_FILTER' : c === '3' ? 'ENABLE_CHANNEL_FILTER' : 'ENABLE_DURATION_FILTER', true);
-            else if (c === '2') this.manage('KEYWORD_BLACKLIST', '關鍵字');
-            else if (c === '4') this.manage('CHANNEL_BLACKLIST', '頻道');
+            else if (c === '2') this.manage('KEYWORD_BLACKLIST', this.t('adv_keyword_filter'));
+            else if (c === '4') this.manage('CHANNEL_BLACKLIST', this.t('adv_channel_filter'));
             else if (c === '6') {
-                const min = prompt('最短(分):'); const max = prompt('最長(分):');
+                const min = prompt(this.t('adv_min')); const max = prompt(this.t('adv_max'));
                 if (min) this.config.set('DURATION_MIN', min * 60);
                 if (max) this.config.set('DURATION_MAX', max * 60);
                 this.onRefresh(); this.showAdvancedMenu();
@@ -1105,9 +1262,9 @@
         }
         manage(k, n) {
             const l = this.config.get(k);
-            const c = prompt(`[${l.join(', ')}]\n1.新增 2.刪除 3.清空 0.返回`);
-            if (c === '1') { const v = prompt('新增:'); if (v) this.config.set(k, [...l, ...v.split(',')]); }
-            if (c === '2') { const v = prompt('刪除:'); if (v) this.config.set(k, l.filter(i => i !== v)); }
+            const c = prompt(`[${l.join(', ')}]\n1.${this.t('adv_add')} 2.${this.t('adv_remove')} 3.${this.t('adv_clear')} 0.${this.t('back')}`);
+            if (c === '1') { const v = prompt(`${this.t('adv_add')}:`); if (v) this.config.set(k, [...l, ...v.split(',')]); }
+            if (c === '2') { const v = prompt(`${this.t('adv_remove')}:`); if (v) this.config.set(k, l.filter(i => i !== v)); }
             if (c === '3') this.config.set(k, []);
             this.onRefresh(); this.showAdvancedMenu();
         }

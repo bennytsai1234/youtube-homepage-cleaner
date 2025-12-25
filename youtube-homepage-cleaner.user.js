@@ -23,17 +23,116 @@
     'use strict';
 
     /**
-     * 🏛️ Architecture Overview
+     * 🏛️ Architecture Overview (v2.0)
+     * 0. SELECTORS: Centralized selector management for easy maintenance.
      * 1. ConfigManager: Unified state management for settings.
      * 2. Utils: Stateless helper functions (parsing, debouncing).
      * 3. Logger: centralized logging wrapper.
-     * 4. StyleManager: Handles CSS injection for high-performance static filtering.
-     * 5. AdBlockGuard: Specialized module for anti-adblock popup removal.
-     * 6. VideoFilter: The core engine for Dynamic Filtering (View counts, etc).
-     * 7. CustomRuleManager: Extensible rule system for easy adding of new text-based filters.
-     * 8. UIManager: Handles the Tampermonkey menu interface.
-     * 9. App: Application entry point and orchestrator.
+     * 4. FilterStats: Statistics tracking for filtered content.
+     * 5. StyleManager: Handles CSS injection for high-performance static filtering.
+     * 6. AdBlockGuard: Specialized module for anti-adblock popup removal.
+     * 7. VideoFilter: The core engine for Dynamic Filtering (View counts, etc).
+     * 8. CustomRuleManager: Extensible rule system for easy adding of new text-based filters.
+     * 9. InteractionEnhancer: Open in new tab functionality.
+     * 10. UIManager: Handles the Tampermonkey menu interface.
+     * 11. App: Application entry point and orchestrator.
      */
+
+    // --- 0. Centralized Selectors (Easy maintenance when YouTube updates) ---
+    const SELECTORS = {
+        // 頂層容器 (用於過濾)
+        VIDEO_CONTAINERS: [
+            'ytd-rich-item-renderer',
+            'ytd-video-renderer',
+            'ytd-compact-video-renderer',
+            'ytd-grid-video-renderer',
+            'yt-lockup-view-model'
+        ],
+        SECTION_CONTAINERS: [
+            'ytd-rich-section-renderer',
+            'ytd-rich-shelf-renderer',
+            'ytd-reel-shelf-renderer',
+            'grid-shelf-view-model'
+        ],
+
+        // Metadata 選擇器 (新舊版相容)
+        METADATA: {
+            // 觀看數/時間
+            TEXT: '.inline-metadata-item, #metadata-line span, .yt-content-metadata-view-model__metadata-text, yt-content-metadata-view-model .yt-core-attributed-string',
+            // 標題連結 (用於 aria-label 提取)
+            TITLE_LINKS: [
+                'a#video-title-link[aria-label]',
+                'a#thumbnail[aria-label]',
+                'a.yt-lockup-metadata-view-model__title[aria-label]',
+                'a[href*="/watch?"][aria-label]'
+            ],
+            // 時長
+            DURATION: 'ytd-thumbnail-overlay-time-status-renderer, span.ytd-thumbnail-overlay-time-status-renderer, badge-shape .yt-badge-shape__text, yt-thumbnail-badge-view-model .yt-badge-shape__text',
+            // 頻道名稱
+            CHANNEL: 'ytd-channel-name, .ytd-channel-name, a[href^="/@"]',
+            // 標題文字
+            TITLE: '#video-title, #title, .yt-lockup-metadata-view-model__title, h3'
+        },
+
+        // 會員/廣告標記
+        BADGES: {
+            MEMBERS: '.badge-style-type-members-only, [aria-label*="會員專屬"], [aria-label*="Members only"]',
+            AD: '[aria-label*="廣告"], [aria-label*="Sponsor"], ad-badge-view-model, feed-ad-metadata-view-model',
+            SHORTS: 'a[href*="/shorts/"]',
+            MIX: 'a[aria-label*="合輯"], a[aria-label*="Mix"]'
+        },
+
+        // 互動排除
+        INTERACTION_EXCLUDE: 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next, .yt-core-attributed-string__link, #subscribe-button, .ytp-progress-bar, .ytp-chrome-bottom',
+
+        // 可點擊容器
+        CLICKABLE: [
+            'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer',
+            'yt-lockup-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer',
+            'ytd-video-owner-renderer', 'ytd-grid-video-renderer'
+        ],
+
+        // 內嵌預覽
+        PREVIEW_PLAYER: 'ytd-video-preview',
+
+        // 連結候選
+        LINK_CANDIDATES: [
+            'a#thumbnail[href*="/watch?"]', 'a#thumbnail[href*="/shorts/"]', 'a#thumbnail[href*="/playlist?"]',
+            'a#video-title-link', 'a#video-title', 'a.yt-simple-endpoint#video-title', 'a.yt-lockup-view-model-wiz__title'
+        ],
+
+        // 生成組合選擇器
+        get allContainers() {
+            return [...this.VIDEO_CONTAINERS, ...this.SECTION_CONTAINERS].join(', ');
+        },
+        get videoContainersStr() {
+            return this.VIDEO_CONTAINERS.join(', ');
+        }
+    };
+
+    // --- 0.1 Filter Statistics ---
+    const FilterStats = {
+        counts: {},
+        session: { total: 0, byRule: {} },
+
+        record(reason) {
+            this.counts[reason] = (this.counts[reason] || 0) + 1;
+            this.session.total++;
+            this.session.byRule[reason] = (this.session.byRule[reason] || 0) + 1;
+        },
+
+        getSummary() {
+            return `已過濾 ${this.session.total} 個項目\n` +
+                Object.entries(this.session.byRule)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([k, v]) => `  ${k}: ${v}`)
+                    .join('\n');
+        },
+
+        reset() {
+            this.session = { total: 0, byRule: {} };
+        }
+    };
 
     // --- 1. Core: Configuration Management ---
     class ConfigManager {
@@ -100,26 +199,42 @@
         }
     }
 
-    // --- 2. Core: Utilities ---
+    // --- 2. Core: Utilities (Enhanced i18n Support) ---
     const Utils = {
         debounce: (func, delay) => {
             let t;
             return (...args) => { clearTimeout(t); t = setTimeout(() => func(...args), delay); };
         },
 
+        // 國際化數字解析 (支援多語言)
         parseNumeric: (text, type = 'any') => {
             if (!text) return null;
             const clean = text.replace(/,/g, '').toLowerCase().trim();
-            if (type === 'view' && /(ago|前|hour|minute|day|week|month|year|秒|分|時|天|週|月|年)/.test(clean)) return null;
 
-            const match = clean.match(/([\d.]+)\s*([kmb千萬万億亿])?/i);
+            // 排除時間字串
+            if (type === 'view' && /(ago|前|hour|minute|day|week|month|year|秒|分|時|天|週|月|年|時間|전|日|ヶ月|年前)/.test(clean)) return null;
+
+            // 支援各種語言的數字單位
+            const match = clean.match(/([\d.]+)\s*([kmb千萬万億亿]|천|만|억|lakh|crore)?/i);
             if (!match) return null;
 
             let num = parseFloat(match[1]);
-            const unit = match[2];
+            const unit = match[2]?.toLowerCase();
             if (unit) {
-                const map = { 'k': 1e3, 'm': 1e6, 'b': 1e9, '千': 1e3, '萬': 1e4, '万': 1e4, '億': 1e8, '亿': 1e8 };
-                num *= (map[unit] || 1);
+                const unitMap = {
+                    // 英文
+                    'k': 1e3, 'm': 1e6, 'b': 1e9,
+                    // 繁體中文
+                    '千': 1e3, '萬': 1e4, '億': 1e8,
+                    // 簡體中文
+                    '万': 1e4, '亿': 1e8,
+                    // 日文 (同中文)
+                    // 韓文
+                    '천': 1e3, '만': 1e4, '억': 1e8,
+                    // 印度
+                    'lakh': 1e5, 'crore': 1e7
+                };
+                num *= (unitMap[unit] || 1);
             }
             return Math.floor(num);
         },
@@ -133,19 +248,31 @@
                 : (parts.length === 2 ? parts[0] * 60 + parts[1] : null);
         },
 
+        // 國際化時間解析 (支援多語言)
         parseTimeAgo: (text) => {
             if (!text) return null;
             const raw = text.toLowerCase();
-            if (raw.includes('second') || raw.includes('秒')) return 0;
+
+            // 秒
+            if (/second|秒|초|วินาที/.test(raw)) return 0;
+
             const match = raw.match(/(\d+)/);
             if (!match) return null;
             const val = parseInt(match[1], 10);
-            if (raw.includes('minute') || raw.includes('分鐘')) return val;
-            if (raw.includes('hour') || raw.includes('小時')) return val * 60;
-            if (raw.includes('day') || raw.includes('天')) return val * 1440;
-            if (raw.includes('week') || raw.includes('週')) return val * 10080;
-            if (raw.includes('month') || raw.includes('月')) return val * 43200;
-            if (raw.includes('year') || raw.includes('年')) return val * 525600;
+
+            // 分鐘
+            if (/minute|分鐘|分钟|分|분|นาที/.test(raw)) return val;
+            // 小時
+            if (/hour|小時|小时|時間|시간|ชั่วโมง/.test(raw)) return val * 60;
+            // 天
+            if (/day|天|日|일|วัน/.test(raw)) return val * 1440;
+            // 週
+            if (/week|週|周|주|สัปดาห์/.test(raw)) return val * 10080;
+            // 月
+            if (/month|月|ヶ月|개월|เดือน/.test(raw)) return val * 43200;
+            // 年
+            if (/year|年|년|ปี/.test(raw)) return val * 525600;
+
             return null;
         },
 
@@ -454,33 +581,23 @@
         }
 
         get title() {
-            if (this._title === null) this._title = this.el.querySelector('#video-title, .yt-lockup-metadata-view-model__title')?.textContent?.trim() || '';
+            if (this._title === null) this._title = this.el.querySelector(SELECTORS.METADATA.TITLE)?.textContent?.trim() || '';
             return this._title;
         }
         get channel() {
-            if (this._channel === null) this._channel = this.el.querySelector('ytd-channel-name, .ytd-channel-name')?.textContent?.trim() || '';
+            if (this._channel === null) this._channel = this.el.querySelector(SELECTORS.METADATA.CHANNEL)?.textContent?.trim() || '';
             return this._channel;
         }
         _parseMetadata() {
             if (this._viewCount !== undefined) return;
 
-            // 支援新舊版 YouTube 佈局的選擇器
-            const texts = Array.from(this.el.querySelectorAll(
-                '.inline-metadata-item, #metadata-line span, ' +
-                '.yt-content-metadata-view-model__metadata-text, ' +  // 新版 yt-lockup-view-model
-                'yt-content-metadata-view-model .yt-core-attributed-string'  // 新版備援
-            ));
+            // 使用集中管理的選擇器
+            const texts = Array.from(this.el.querySelectorAll(SELECTORS.METADATA.TEXT));
 
-            // 嘗試從 aria-label 提取 (支援新舊版連結結構)
-            const ariaSelectors = [
-                ':scope a#video-title-link[aria-label]',
-                ':scope a#thumbnail[aria-label]',
-                ':scope a.yt-lockup-metadata-view-model__title[aria-label]',  // 新版
-                ':scope a[href*="/watch?"][aria-label]'  // 通用備援
-            ];
+            // 嘗試從 aria-label 提取
             let aria = '';
-            for (const sel of ariaSelectors) {
-                const el = this.el.querySelector(sel);
+            for (const sel of SELECTORS.METADATA.TITLE_LINKS) {
+                const el = this.el.querySelector(`:scope ${sel}`);
                 if (el?.ariaLabel) { aria = el.ariaLabel; break; }
             }
 
@@ -510,21 +627,15 @@
         get timeAgo() { this._parseMetadata(); return this._timeAgo; }
         get duration() {
             if (this._duration === undefined) {
-                // 支援新舊版 YouTube 時長顯示
-                const el = this.el.querySelector(
-                    'ytd-thumbnail-overlay-time-status-renderer, ' +
-                    'span.ytd-thumbnail-overlay-time-status-renderer, ' +
-                    'badge-shape .yt-badge-shape__text, ' +  // 新版 yt-lockup-view-model
-                    'yt-thumbnail-badge-view-model .yt-badge-shape__text'  // 新版備援
-                );
+                const el = this.el.querySelector(SELECTORS.METADATA.DURATION);
                 this._duration = el ? Utils.parseDuration(el.textContent) : null;
             }
             return this._duration;
         }
-        get isShorts() { return !!this.el.querySelector('a[href*="/shorts/"]'); }
+        get isShorts() { return !!this.el.querySelector(SELECTORS.BADGES.SHORTS); }
         get isLive() { return this._liveViewers !== null; }
         get isMembers() {
-            return this.el.querySelector('.badge-style-type-members-only') ||
+            return this.el.querySelector(SELECTORS.BADGES.MEMBERS) ||
                 this.el.innerText.includes('會員專屬') ||
                 this.el.innerText.includes('Members only');
         }
@@ -533,16 +644,11 @@
     class VideoFilter {
         constructor(config) {
             this.config = config;
-            // 7.1 Extend here for more complex logic if needed
             this.customRules = new CustomRuleManager(config);
-            this.selectors = [
-                'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer',
-                'ytd-grid-video-renderer', 'yt-lockup-view-model', 'ytd-rich-section-renderer'
-            ].join(',');
         }
 
         processPage() {
-            const elements = document.querySelectorAll(this.selectors);
+            const elements = document.querySelectorAll(SELECTORS.allContainers);
             for (const el of elements) this.processElement(el);
         }
 
@@ -599,6 +705,7 @@
         _hide(element, reason) {
             element.style.display = 'none';
             element.dataset.ypHidden = reason;
+            FilterStats.record(reason);  // 記錄統計
             Logger.info(`Hidden [${reason}]`, element);
         }
 
@@ -608,30 +715,19 @@
                 delete el.dataset.ypHidden;
                 delete el.dataset.ypChecked;
             });
+            FilterStats.reset();  // 重設統計
         }
     }
 
-    // --- 8. Module: Interaction Enhancer (完整還原 v1.4.0) ---
+    // --- 8. Module: Interaction Enhancer (使用集中選擇器) ---
     class InteractionEnhancer {
         constructor(config) {
             this.config = config;
-            // v1.4.0 選擇器定義
-            this.CLICKABLE_CONTAINERS = [
-                'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer',
-                'yt-lockup-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer',
-                'ytd-video-owner-renderer', 'ytd-grid-video-renderer'
-            ];
-            this.INLINE_PREVIEW_PLAYER = 'ytd-video-preview';
         }
 
-        // v1.4.0 連結搜尋函數
         findPrimaryLink(container) {
             if (!container) return null;
-            const candidates = [
-                'a#thumbnail[href*="/watch?"]', 'a#thumbnail[href*="/shorts/"]', 'a#thumbnail[href*="/playlist?"]',
-                'a#video-title-link', 'a#video-title', 'a.yt-simple-endpoint#video-title', 'a.yt-lockup-view-model-wiz__title'
-            ];
-            for (const sel of candidates) {
+            for (const sel of SELECTORS.LINK_CANDIDATES) {
                 const a = container.querySelector(sel);
                 if (a?.href) return a;
             }
@@ -643,21 +739,19 @@
                 if (!this.config.get('OPEN_IN_NEW_TAB')) return;
                 if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
 
-                // 完整排除清單 (來自 v1.4.0)
-                const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next, .yt-core-attributed-string__link, #subscribe-button, .ytp-progress-bar, .ytp-chrome-bottom';
-                if (e.target.closest(exclusions)) return;
+                // 使用集中管理的排除清單
+                if (e.target.closest(SELECTORS.INTERACTION_EXCLUDE)) return;
 
                 let targetLink = null;
-                const previewPlayer = e.target.closest(this.INLINE_PREVIEW_PLAYER);
+                const previewPlayer = e.target.closest(SELECTORS.PREVIEW_PLAYER);
 
                 if (previewPlayer) {
-                    // 處理內嵌預覽播放器
-                    targetLink = this.findPrimaryLink(previewPlayer) || this.findPrimaryLink(previewPlayer.closest(this.CLICKABLE_CONTAINERS.join(',')));
+                    targetLink = this.findPrimaryLink(previewPlayer) || this.findPrimaryLink(previewPlayer.closest(SELECTORS.CLICKABLE.join(',')));
                 } else {
-                    const container = e.target.closest(this.CLICKABLE_CONTAINERS.join(', '));
+                    const container = e.target.closest(SELECTORS.CLICKABLE.join(', '));
                     if (!container) return;
 
-                    // 頻道連結處理 (v1.4.0 特性)
+                    // 頻道連結處理
                     const channelLink = e.target.closest('a#avatar-link, .ytd-channel-name a, a[href^="/@"], a[href^="/channel/"]');
                     targetLink = channelLink?.href ? channelLink : this.findPrimaryLink(container);
                 }
@@ -677,12 +771,13 @@
         }
     }
 
-    // --- 9. Module: UI Manager ---
+    // --- 9. Module: UI Manager (Enhanced with Stats) ---
     class UIManager {
         constructor(config, onRefresh) { this.config = config; this.onRefresh = onRefresh; }
         showMainMenu() {
             const i = (k) => this.config.get(k) ? '✅' : '❌';
-            const choice = prompt(`【 YouTube 淨化大師 v2.0.0-beta.1 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n\n輸入選項:`);
+            const statsInfo = FilterStats.session.total > 0 ? ` (${FilterStats.session.total})` : '';
+            const choice = prompt(`【 YouTube 淨化大師 v2.0.0-beta.1 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n8. 📊 查看過濾統計${statsInfo}\n\n輸入選項:`);
             if (choice) this.handleMenu(choice);
         }
         handleMenu(c) {
@@ -694,7 +789,13 @@
                 case '5': this.toggle('OPEN_IN_NEW_TAB'); break;
                 case '6': this.toggle('DEBUG_MODE'); break;
                 case '7': if (confirm('重設?')) { Object.keys(this.config.defaults).forEach(k => this.config.set(k, this.config.defaults[k])); this.update('', null); } break;
+                case '8': this.showStats(); break;
             }
+        }
+        showStats() {
+            const summary = FilterStats.getSummary();
+            alert(`【 過濾統計 】\n\n${summary || '尚未過濾任何內容'}`);
+            this.showMainMenu();
         }
         showRuleMenu() {
             const r = this.config.get('RULE_ENABLES'); const k = Object.keys(r);

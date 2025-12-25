@@ -13,44 +13,37 @@ https://raw.githubusercontent.com/bennytsai1234/youtube-homepage-cleaner/beta/yo
 
 ## 🎯 開發目標
 
-### Phase 1: 架構優化 (v2.0.0-beta.1)
+### Phase 1: 架構優化 (v2.0.0-beta.1) ✅ 已完成
 
-- [ ] **統一選擇器管理**
+- [x] **統一選擇器管理 (SELECTORS)**
   - 建立 `SELECTORS` 常量物件
   - 集中管理所有 CSS 選擇器
   - 方便 YouTube 更新時快速修改
 
-- [ ] **國際化數字解析**
+- [x] **國際化數字解析**
   - 支援日文 (万, 億)
-  - 支援韓文 (만, 억)
+  - 支援韓文 (천, 만, 억)
   - 支援英文縮寫 (K, M, B)
-  - 支援更多時間單位 (秒, 分, etc.)
+  - 支援印度格式 (lakh, crore)
+  - 支援泰文時間單位
 
-### Phase 2: 用戶體驗 (v2.0.0-beta.2)
+- [x] **過濾統計系統 (FilterStats)**
+  - 記錄每種規則的過濾數量
+  - 主選單顯示過濾總數
+  - 選項 8 查看詳細統計
 
-- [ ] **設定面板重構**
-  - 使用 HTML Modal 替代 prompt()
-  - 即時預覽設定效果
-  - 分類展示所有規則
-
-- [ ] **過濾視覺化**
-  - Debug 模式顯示過濾原因
-  - 統計已過濾數量
-  - 支援「查看已過濾內容」功能
-
-### Phase 3: 進階功能 (v2.0.0-beta.3)
-
-- [ ] **設定匯出/匯入**
-  - JSON 格式匯出所有設定
-  - 一鍵匯入還原設定
-  - 雲端同步 (可選)
+### Phase 2: 穩定性優化 (v2.0.0-beta.2)
 
 - [ ] **效能優化**
   - 使用 `requestIdleCallback` 分批處理
   - 減少 MutationObserver 觸發頻率
   - Performance 計時統計
 
-### Phase 4: 穩定性 (v2.0.0-rc)
+- [ ] **設定匯出/匯入**
+  - JSON 格式匯出所有設定
+  - 一鍵匯入還原設定
+
+### Phase 3: 進階功能 (v2.0.0-rc)
 
 - [ ] **Anti-Adblock 強化**
   - 更積極的 DOM 移除策略

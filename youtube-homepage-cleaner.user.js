@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.5.2
-// @description  為極致體驗而生的內容過濾器。重構優化版本，補回直播過濾等功能。
+// @version      1.5.3
+// @description  為極致體驗而生的內容過濾器。v1.5.3 修復新分頁開啟問題，強化會員過濾。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -59,8 +59,7 @@
                     shorts_grid_shelf: true, movies_shelf: true,
                     youtube_featured_shelf: true, popular_gaming_shelf: true,
                     more_from_game_shelf: true, trending_playlist: true,
-                    inline_survey: true, clarify_box: true, explore_topics: true,
-                    members_priority: true
+                    inline_survey: true, clarify_box: true, explore_topics: true
                 }
             };
             this.state = this._load();
@@ -69,7 +68,7 @@
         _load() {
             const get = (k, d) => GM_getValue(k, d);
             const snake = str => str.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`);
-            
+
             const loaded = {};
             for (const key in this.defaults) {
                 if (key === 'RULE_ENABLES') {
@@ -78,7 +77,7 @@
                 } else {
                     loaded[key] = get(snake(key), this.defaults[key]);
                     if (Array.isArray(this.defaults[key]) && !Array.isArray(loaded[key])) {
-                        loaded[key] = [ ...this.defaults[key] ];
+                        loaded[key] = [...this.defaults[key]];
                     }
                 }
             }
@@ -86,7 +85,7 @@
         }
 
         get(key) { return this.state[key]; }
-        
+
         set(key, value) {
             this.state[key] = value;
             const snake = str => str.replace(/[A-Z]/g, l => `_${l.toLowerCase()}`);
@@ -110,8 +109,8 @@
         parseNumeric: (text, type = 'any') => {
             if (!text) return null;
             const clean = text.replace(/,/g, '').toLowerCase().trim();
-            if (type === 'view' && /(ago|前|hour|minute|day|week|month|year|秒|分|時|天|週|月|年)/.test(clean)) return null; 
-            
+            if (type === 'view' && /(ago|前|hour|minute|day|week|month|year|秒|分|時|天|週|月|年)/.test(clean)) return null;
+
             const match = clean.match(/([\d.]+)\s*([kmb千萬万億亿])?/i);
             if (!match) return null;
 
@@ -128,8 +127,8 @@
             if (!text) return null;
             const parts = text.trim().split(':').map(Number);
             if (parts.some(isNaN)) return null;
-            return parts.length === 3 
-                ? parts[0] * 3600 + parts[1] * 60 + parts[2] 
+            return parts.length === 3
+                ? parts[0] * 3600 + parts[1] * 60 + parts[2]
                 : (parts.length === 2 ? parts[0] * 60 + parts[1] : null);
         },
 
@@ -228,7 +227,7 @@
 
             // 5.1 Global Fixes
             rules.push('body, html { font-family: "YouTube Noto", Roboto, Arial, "PingFang SC", "Microsoft YaHei", sans-serif !important; }');
-            
+
             // 5.2 Anti-Adblock
             if (enables.ad_block_popup) {
                 rules.push(`
@@ -245,8 +244,8 @@
             // ★ Add new Selector-based rules here
             const map = {
                 ad_sponsor: [
-                    'ytd-ad-slot-renderer', 
-                    'ytd-promoted-sparkles-text-search-renderer', 
+                    'ytd-ad-slot-renderer',
+                    'ytd-promoted-sparkles-text-search-renderer',
                     '#masthead-ad',
                     'ytd-rich-item-renderer:has(.ytd-ad-slot-renderer)',
                     'feed-ad-metadata-view-model',
@@ -343,22 +342,22 @@
         checkAndClean() {
             const dialogs = document.querySelectorAll('tp-yt-paper-dialog, ytd-enforcement-message-view-model');
             let detected = false;
-            
+
             for (const dialog of dialogs) {
                 // ★ 白名單優先檢查 - 避免誤殺會員視窗等
                 if (this.isWhitelisted(dialog)) continue;
-                
+
                 if (this.isAdBlockPopup(dialog)) {
                     // 嘗試點擊關閉按鈕
                     const dismissBtn = dialog.querySelector('[aria-label="Close"], #dismiss-button, [aria-label="可能有風險"]');
                     if (dismissBtn) dismissBtn.click();
-                    
+
                     dialog.remove();
                     detected = true;
                     Logger.info(`🚫 Removed AdBlock Popup: ${dialog.tagName}`);
                 }
             }
-            
+
             if (detected) {
                 // 移除背景遮罩
                 document.querySelectorAll('tp-yt-iron-overlay-backdrop').forEach(b => {
@@ -389,7 +388,7 @@
 
             css(document.body, allowScrollProps);
             css(document.documentElement, allowScrollProps);
-            
+
             const ytdApp = document.querySelector('ytd-app');
             if (ytdApp) {
                 css(ytdApp, allowScrollProps);
@@ -406,11 +405,11 @@
         resumeVideo() {
             // 只有剛偵測到彈窗時才強制播放，避免過度積極
             if (Date.now() - this.lastTrigger > 3000) {
-                 this.lastTrigger = Date.now();
-                 const video = document.querySelector('video');
-                 if (video && video.paused && !video.ended) {
-                     video.play().catch(() => {});
-                 }
+                this.lastTrigger = Date.now();
+                const video = document.querySelector('video');
+                if (video && video.paused && !video.ended) {
+                    video.play().catch(() => { });
+                }
             }
         }
     }
@@ -438,7 +437,7 @@
         _parseMetadata() {
             if (this._viewCount !== undefined) return;
             const texts = Array.from(this.el.querySelectorAll('.inline-metadata-item, #metadata-line span'));
-            
+
             // 嘗試從 aria-label 提取
             const aria = Utils.extractAriaTextForCounts(this.el);
             if (texts.length === 0 && aria) {
@@ -447,11 +446,11 @@
                 this._timeAgo = Utils.parseTimeAgo(aria);
                 return;
             }
-            
-            this._viewCount = null; 
+
+            this._viewCount = null;
             this._liveViewers = null;
             this._timeAgo = null;
-            
+
             for (const t of texts) {
                 const text = t.textContent;
                 // 直播觀看數優先檢查
@@ -474,6 +473,11 @@
         }
         get isShorts() { return !!this.el.querySelector('a[href*="/shorts/"]'); }
         get isLive() { return this._liveViewers !== null; }
+        get isMembers() {
+            return this.el.querySelector('.badge-style-type-members-only') ||
+                this.el.innerText.includes('會員專屬') ||
+                this.el.innerText.includes('Members only');
+        }
     }
 
     class VideoFilter {
@@ -482,8 +486,8 @@
             // 7.1 Extend here for more complex logic if needed
             this.customRules = new CustomRuleManager(config);
             this.selectors = [
-                 'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer',
-                 'ytd-grid-video-renderer', 'yt-lockup-view-model', 'ytd-rich-section-renderer'
+                'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer',
+                'ytd-grid-video-renderer', 'yt-lockup-view-model', 'ytd-rich-section-renderer'
             ].join(',');
         }
 
@@ -503,7 +507,8 @@
             // 7.3 Base Logic
             if (element.tagName.includes('VIDEO') || element.tagName.includes('LOCKUP') || element.tagName.includes('RICH-ITEM')) {
                 const item = new LazyVideoData(element);
-                
+
+                // Advanced Filters
                 // Advanced Filters
                 if (this.config.get('ENABLE_KEYWORD_FILTER') && item.title) {
                     if (this.config.get('KEYWORD_BLACKLIST').some(k => item.title.toLowerCase().includes(k.toLowerCase()))) return this._hide(element, 'keyword_blacklist');
@@ -512,19 +517,24 @@
                     if (this.config.get('CHANNEL_BLACKLIST').some(k => item.channel.toLowerCase().includes(k.toLowerCase()))) return this._hide(element, 'channel_blacklist');
                 }
 
+                // 強化會員過濾 (JS補刀)：若開啟成員過濾且偵測到是會員影片，直接隱藏
+                if (this.config.get('RULE_ENABLES').members_only && item.isMembers) {
+                    return this._hide(element, 'members_only_js');
+                }
+
                 if (this.config.get('ENABLE_LOW_VIEW_FILTER') && !item.isShorts) {
-                   const th = this.config.get('LOW_VIEW_THRESHOLD');
-                   const grace = this.config.get('GRACE_PERIOD_HOURS') * 60;
-                   
-                   // 直播觀看數過濾 (不受豁免期限制)
-                   if (item.isLive && item.liveViewers !== null && item.liveViewers < th) {
-                       return this._hide(element, 'low_viewer_live');
-                   }
-                   
-                   // 一般影片觀看數過濾 (受豁免期限制)
-                   if (!item.isLive && item.viewCount !== null && item.timeAgo !== null && item.timeAgo > grace && item.viewCount < th) {
-                       return this._hide(element, 'low_view');
-                   }
+                    const th = this.config.get('LOW_VIEW_THRESHOLD');
+                    const grace = this.config.get('GRACE_PERIOD_HOURS') * 60;
+
+                    // 直播觀看數過濾 (不受豁免期限制)
+                    if (item.isLive && item.liveViewers !== null && item.liveViewers < th) {
+                        return this._hide(element, 'low_viewer_live');
+                    }
+
+                    // 一般影片觀看數過濾 (受豁免期限制)
+                    if (!item.isLive && item.viewCount !== null && item.timeAgo !== null && item.timeAgo > grace && item.viewCount < th) {
+                        return this._hide(element, 'low_view');
+                    }
                 }
 
                 if (this.config.get('ENABLE_DURATION_FILTER') && !item.isShorts && item.duration !== null) {
@@ -541,7 +551,7 @@
             element.dataset.ypHidden = reason;
             Logger.info(`Hidden [${reason}]`, element);
         }
-        
+
         reset() {
             document.querySelectorAll('[data-yp-hidden]').forEach(el => {
                 el.style.display = '';
@@ -557,13 +567,14 @@
         init() {
             document.addEventListener('click', (e) => {
                 if (!this.config.get('OPEN_IN_NEW_TAB')) return;
-                if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+                if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
                 if (e.target.closest('button, #menu, ytd-menu-renderer, yt-icon-button')) return;
                 const link = e.target.closest('a');
                 if (!link || !link.href) return;
                 const url = new URL(link.href);
-                if ((url.pathname.startsWith('/watch') || url.pathname.startsWith('/shorts')) && 
-                    e.target.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer')) {
+                // 擴充容器支援 (支援側邊欄 ytd-compact-video-renderer, 新版 yt-lockup-view-model, 播放清單)
+                const container = e.target.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model, ytd-playlist-renderer, ytd-compact-playlist-renderer');
+                if ((url.pathname.startsWith('/watch') || url.pathname.startsWith('/shorts') || url.pathname.startsWith('/playlist')) && container) {
                     e.preventDefault(); e.stopImmediatePropagation(); window.open(link.href, '_blank');
                 }
             }, { capture: true });
@@ -575,48 +586,48 @@
         constructor(config, onRefresh) { this.config = config; this.onRefresh = onRefresh; }
         showMainMenu() {
             const i = (k) => this.config.get(k) ? '✅' : '❌';
-            const choice = prompt(`【 YouTube 淨化大師 v1.5.2 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n\n輸入選項:`);
+            const choice = prompt(`【 YouTube 淨化大師 v1.5.3 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n\n輸入選項:`);
             if (choice) this.handleMenu(choice);
         }
         handleMenu(c) {
-            switch(c.trim()) {
+            switch (c.trim()) {
                 case '1': this.showRuleMenu(); break;
                 case '2': this.toggle('ENABLE_LOW_VIEW_FILTER'); break;
-                case '3': const v = prompt('閾值:'); if(v) this.update('LOW_VIEW_THRESHOLD', Number(v)); break;
+                case '3': const v = prompt('閾值:'); if (v) this.update('LOW_VIEW_THRESHOLD', Number(v)); break;
                 case '4': this.showAdvancedMenu(); break;
                 case '5': this.toggle('OPEN_IN_NEW_TAB'); break;
                 case '6': this.toggle('DEBUG_MODE'); break;
-                case '7': if(confirm('重設?')) { Object.keys(this.config.defaults).forEach(k=>this.config.set(k, this.config.defaults[k])); this.update('', null); } break;
+                case '7': if (confirm('重設?')) { Object.keys(this.config.defaults).forEach(k => this.config.set(k, this.config.defaults[k])); this.update('', null); } break;
             }
         }
         showRuleMenu() {
             const r = this.config.get('RULE_ENABLES'); const k = Object.keys(r);
-            const c = prompt('【 過濾規則 】(0 返回)\n' + k.map((key, i) => `${i+1}. [${r[key]?'✅':'❌'}] ${key}`).join('\n'));
-            if (c && c!=='0') { this.config.toggleRule(k[parseInt(c)-1]); this.onRefresh(); this.showRuleMenu(); } else if (c==='0') this.showMainMenu();
+            const c = prompt('【 過濾規則 】(0 返回)\n' + k.map((key, i) => `${i + 1}. [${r[key] ? '✅' : '❌'}] ${key}`).join('\n'));
+            if (c && c !== '0') { this.config.toggleRule(k[parseInt(c) - 1]); this.onRefresh(); this.showRuleMenu(); } else if (c === '0') this.showMainMenu();
         }
         showAdvancedMenu() {
             const i = (k) => this.config.get(k) ? '✅' : '❌';
             const c = prompt(`1. ${i('ENABLE_KEYWORD_FILTER')} 關鍵字過濾\n2. ✏️ 關鍵字清單\n3. ${i('ENABLE_CHANNEL_FILTER')} 頻道過濾\n4. ✏️ 頻道清單\n5. ${i('ENABLE_DURATION_FILTER')} 長度過濾\n6. ⏱️ 設定長度\n0. 返回`);
-            if (c==='1'||c==='3'||c==='5') this.toggle(c==='1'?'ENABLE_KEYWORD_FILTER':c==='3'?'ENABLE_CHANNEL_FILTER':'ENABLE_DURATION_FILTER', true);
-            else if (c==='2') this.manage('KEYWORD_BLACKLIST', '關鍵字');
-            else if (c==='4') this.manage('CHANNEL_BLACKLIST', '頻道');
-            else if (c==='6') { 
-                const min = prompt('最短(分):'); const max = prompt('最長(分):'); 
-                if(min) this.config.set('DURATION_MIN', min*60); 
-                if(max) this.config.set('DURATION_MAX', max*60); 
+            if (c === '1' || c === '3' || c === '5') this.toggle(c === '1' ? 'ENABLE_KEYWORD_FILTER' : c === '3' ? 'ENABLE_CHANNEL_FILTER' : 'ENABLE_DURATION_FILTER', true);
+            else if (c === '2') this.manage('KEYWORD_BLACKLIST', '關鍵字');
+            else if (c === '4') this.manage('CHANNEL_BLACKLIST', '頻道');
+            else if (c === '6') {
+                const min = prompt('最短(分):'); const max = prompt('最長(分):');
+                if (min) this.config.set('DURATION_MIN', min * 60);
+                if (max) this.config.set('DURATION_MAX', max * 60);
                 this.onRefresh(); this.showAdvancedMenu();
-            } else if (c==='0') this.showMainMenu();
+            } else if (c === '0') this.showMainMenu();
         }
         manage(k, n) {
             const l = this.config.get(k);
             const c = prompt(`[${l.join(', ')}]\n1.新增 2.刪除 3.清空 0.返回`);
-            if (c==='1') { const v = prompt('新增:'); if(v) this.config.set(k, [...l, ...v.split(',')]); }
-            if (c==='2') { const v = prompt('刪除:'); if(v) this.config.set(k, l.filter(i=>i!==v)); }
-            if (c==='3') this.config.set(k, []);
+            if (c === '1') { const v = prompt('新增:'); if (v) this.config.set(k, [...l, ...v.split(',')]); }
+            if (c === '2') { const v = prompt('刪除:'); if (v) this.config.set(k, l.filter(i => i !== v)); }
+            if (c === '3') this.config.set(k, []);
             this.onRefresh(); this.showAdvancedMenu();
         }
         toggle(k, adv) { this.config.set(k, !this.config.get(k)); this.onRefresh(); adv ? this.showAdvancedMenu() : this.showMainMenu(); }
-        update(k, v) { if(k) this.config.set(k, v); this.onRefresh(); this.showMainMenu(); }
+        update(k, v) { if (k) this.config.set(k, v); this.onRefresh(); this.showMainMenu(); }
     }
 
     // --- 10. App Entry ---
@@ -629,7 +640,7 @@
             this.enhancer = new InteractionEnhancer(this.config);
             this.ui = new UIManager(this.config, () => this.refresh());
         }
-        
+
         // **ANTI-ADBLOCK PATCH**: 透過 YouTube 自身的配置對象來阻止偵測
         patchYouTubeConfig() {
             try {
@@ -645,31 +656,31 @@
                 // 忽略錯誤
             }
         }
-        
+
         init() {
             Logger.enabled = this.config.get('DEBUG_MODE');
-            
+
             // 先嘗試 patch YouTube 配置
             this.patchYouTubeConfig();
-            
+
             this.styleManager.apply();
             this.adGuard.start();
             this.enhancer.init();
             GM_registerMenuCommand('⚙️ 淨化大師設定', () => this.ui.showMainMenu());
-            
+
             const obs = new MutationObserver(Utils.debounce(() => this.filter.processPage(), 100));
             obs.observe(document.body, { childList: true, subtree: true });
-            
+
             window.addEventListener('yt-navigate-finish', () => {
                 this.patchYouTubeConfig(); // 每次導航後重新 patch
                 this.filter.processPage();
                 this.adGuard.checkAndClean();
             });
-            
+
             this.filter.processPage();
-            Logger.info(`🚀 YouTube 淨化大師 v1.5.2 啟動`);
+            Logger.info(`🚀 YouTube 淨化大師 v1.5.3 啟動`);
         }
-        
+
         refresh() {
             Logger.enabled = this.config.get('DEBUG_MODE');
             this.filter.reset();

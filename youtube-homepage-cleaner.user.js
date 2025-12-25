@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.5.6
-// @description  為極致體驗而生的內容過濾器。v1.5.6 完整還原 v1.4.0 所有功能。
+// @version      1.5.7
+// @description  為極致體驗而生的內容過濾器。v1.5.7 支援新版 yt-lockup-view-model 佈局。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -463,10 +463,27 @@
         }
         _parseMetadata() {
             if (this._viewCount !== undefined) return;
-            const texts = Array.from(this.el.querySelectorAll('.inline-metadata-item, #metadata-line span'));
 
-            // 嘗試從 aria-label 提取
-            const aria = Utils.extractAriaTextForCounts(this.el);
+            // 支援新舊版 YouTube 佈局的選擇器
+            const texts = Array.from(this.el.querySelectorAll(
+                '.inline-metadata-item, #metadata-line span, ' +
+                '.yt-content-metadata-view-model__metadata-text, ' +  // 新版 yt-lockup-view-model
+                'yt-content-metadata-view-model .yt-core-attributed-string'  // 新版備援
+            ));
+
+            // 嘗試從 aria-label 提取 (支援新舊版連結結構)
+            const ariaSelectors = [
+                ':scope a#video-title-link[aria-label]',
+                ':scope a#thumbnail[aria-label]',
+                ':scope a.yt-lockup-metadata-view-model__title[aria-label]',  // 新版
+                ':scope a[href*="/watch?"][aria-label]'  // 通用備援
+            ];
+            let aria = '';
+            for (const sel of ariaSelectors) {
+                const el = this.el.querySelector(sel);
+                if (el?.ariaLabel) { aria = el.ariaLabel; break; }
+            }
+
             if (texts.length === 0 && aria) {
                 this._viewCount = Utils.parseNumeric(aria, 'view');
                 this._liveViewers = Utils.parseLiveViewers(aria);
@@ -493,7 +510,13 @@
         get timeAgo() { this._parseMetadata(); return this._timeAgo; }
         get duration() {
             if (this._duration === undefined) {
-                const el = this.el.querySelector('ytd-thumbnail-overlay-time-status-renderer, span.ytd-thumbnail-overlay-time-status-renderer');
+                // 支援新舊版 YouTube 時長顯示
+                const el = this.el.querySelector(
+                    'ytd-thumbnail-overlay-time-status-renderer, ' +
+                    'span.ytd-thumbnail-overlay-time-status-renderer, ' +
+                    'badge-shape .yt-badge-shape__text, ' +  // 新版 yt-lockup-view-model
+                    'yt-thumbnail-badge-view-model .yt-badge-shape__text'  // 新版備援
+                );
                 this._duration = el ? Utils.parseDuration(el.textContent) : null;
             }
             return this._duration;
@@ -659,7 +682,7 @@
         constructor(config, onRefresh) { this.config = config; this.onRefresh = onRefresh; }
         showMainMenu() {
             const i = (k) => this.config.get(k) ? '✅' : '❌';
-            const choice = prompt(`【 YouTube 淨化大師 v1.5.6 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n\n輸入選項:`);
+            const choice = prompt(`【 YouTube 淨化大師 v1.5.7 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n\n輸入選項:`);
             if (choice) this.handleMenu(choice);
         }
         handleMenu(c) {
@@ -751,7 +774,7 @@
             });
 
             this.filter.processPage();
-            Logger.info(`🚀 YouTube 淨化大師 v1.5.6 啟動`);
+            Logger.info(`🚀 YouTube 淨化大師 v1.5.7 啟動`);
         }
 
         refresh() {

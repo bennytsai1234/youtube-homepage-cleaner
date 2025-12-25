@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.5.3
-// @description  為極致體驗而生的內容過濾器。v1.5.3 修復新分頁開啟問題，強化會員過濾。
+// @version      1.5.4
+// @description  為極致體驗而生的內容過濾器。v1.5.4 解決多影片點擊失效問題，優化容器判斷。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -572,9 +572,15 @@
                 const link = e.target.closest('a');
                 if (!link || !link.href) return;
                 const url = new URL(link.href);
-                // 擴充容器支援 (支援側邊欄 ytd-compact-video-renderer, 新版 yt-lockup-view-model, 播放清單)
-                const container = e.target.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model, ytd-playlist-renderer, ytd-compact-playlist-renderer');
-                if ((url.pathname.startsWith('/watch') || url.pathname.startsWith('/shorts') || url.pathname.startsWith('/playlist')) && container) {
+
+                // 判斷是否為影片卡片連結 (透過 ID 或 容器)
+                // 1. 連結本身特徵 (最準確)
+                const isVideoLink = link.id === 'thumbnail' || link.id === 'video-title-link' || link.classList.contains('ytd-thumbnail');
+
+                // 2. 容器特徵 (備援)
+                const container = e.target.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model, ytd-playlist-renderer, ytd-compact-playlist-renderer, ytd-rich-grid-media');
+
+                if ((url.pathname.startsWith('/watch') || url.pathname.startsWith('/shorts') || url.pathname.startsWith('/playlist')) && (isVideoLink || container)) {
                     e.preventDefault(); e.stopImmediatePropagation(); window.open(link.href, '_blank');
                 }
             }, { capture: true });
@@ -586,7 +592,7 @@
         constructor(config, onRefresh) { this.config = config; this.onRefresh = onRefresh; }
         showMainMenu() {
             const i = (k) => this.config.get(k) ? '✅' : '❌';
-            const choice = prompt(`【 YouTube 淨化大師 v1.5.3 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n\n輸入選項:`);
+            const choice = prompt(`【 YouTube 淨化大師 v1.5.4 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n\n輸入選項:`);
             if (choice) this.handleMenu(choice);
         }
         handleMenu(c) {
@@ -678,7 +684,7 @@
             });
 
             this.filter.processPage();
-            Logger.info(`🚀 YouTube 淨化大師 v1.5.3 啟動`);
+            Logger.info(`🚀 YouTube 淨化大師 v1.5.4 啟動`);
         }
 
         refresh() {

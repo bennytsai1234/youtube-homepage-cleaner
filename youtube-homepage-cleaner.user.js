@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.5.5
-// @description  為極致體驗而生的內容過濾器。v1.5.5 補回 v1.4.0 遺漏功能 (推薦播放清單、會員優先過濾)。
+// @version      1.5.6
+// @description  為極致體驗而生的內容過濾器。v1.5.6 完整還原 v1.4.0 所有功能。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -186,13 +186,18 @@
             // ★ ADD NEW RULES HERE ★
             // Format: { key: 'config_key_name', rules: [/Regex/i, 'String'], type: 'text' (default) }
             this.definitions = [
+                // 從 v1.4.0 還原的文字匹配規則 (作為 CSS 的備援)
+                { key: 'members_only', rules: [/頻道會員專屬|Members only/i] },
+                { key: 'mix_only', rules: [/^(合輯|Mix)[\s\-–]/i] },
+
+                // 區塊/Shelf 類規則
                 { key: 'news_block', rules: [/新聞快報|Breaking News|ニュース/i] },
                 { key: 'posts_block', rules: [/貼文|Posts|投稿|Publicaciones|最新 YouTube 貼文/i] },
                 { key: 'playables_block', rules: [/Playables|遊戲角落/i] },
                 { key: 'fundraiser_block', rules: [/Fundraiser|募款/i] },
                 { key: 'popular_gaming_shelf', rules: [/熱門遊戲直播/i] },
                 { key: 'explore_topics', rules: [/探索更多主題|Explore more topics/i] },
-                { key: 'movies_shelf', rules: [/為你推薦的特選電影|featured movies/i] },
+                { key: 'movies_shelf', rules: [/為你推薦的特選電影|featured movies|YouTube 精選/i] },
                 { key: 'trending_playlist', rules: [/發燒影片|Trending/i] },
                 { key: 'youtube_featured_shelf', rules: [/YouTube 精選/i] },
                 { key: 'shorts_block', rules: [/^Shorts$/i] },
@@ -230,15 +235,27 @@
             // 5.1 Global Fixes
             rules.push('body, html { font-family: "YouTube Noto", Roboto, Arial, "PingFang SC", "Microsoft YaHei", sans-serif !important; }');
 
-            // 5.2 Anti-Adblock
+            // 5.2 Anti-Adblock (完整還原 v1.4.0)
             if (enables.ad_block_popup) {
                 rules.push(`
                     tp-yt-paper-dialog:has(ytd-enforcement-message-view-model),
                     ytd-enforcement-message-view-model,
-                    tp-yt-iron-overlay-backdrop:has(~ tp-yt-paper-dialog ytd-enforcement-message-view-model) { display: none !important; }
-                    ytd-app:has(ytd-enforcement-message-view-model), body:has(ytd-enforcement-message-view-model) {
-                        overflow: auto !important; position: static !important; pointer-events: auto !important;
+                    #immersive-translate-browser-popup,
+                    tp-yt-iron-overlay-backdrop:has(~ tp-yt-paper-dialog ytd-enforcement-message-view-model),
+                    tp-yt-iron-overlay-backdrop.opened,
+                    yt-playability-error-supported-renderers:has(ytd-enforcement-message-view-model) { display: none !important; }
+                    
+                    ytd-app:has(ytd-enforcement-message-view-model), body:has(ytd-enforcement-message-view-model), html:has(ytd-enforcement-message-view-model) {
+                        overflow: auto !important; overflow-y: auto !important; position: static !important; 
+                        pointer-events: auto !important; height: auto !important; top: 0 !important; 
+                        margin-right: 0 !important; overscroll-behavior: auto !important;
                     }
+                    
+                    ytd-app[aria-hidden="true"]:has(ytd-enforcement-message-view-model) { 
+                        aria-hidden: false !important; display: block !important; 
+                    }
+                    
+                    ytd-app { --ytd-app-scroll-offset: 0 !important; }
                 `);
             }
 
@@ -571,30 +588,68 @@
         }
     }
 
-    // --- 8. Module: Interaction Enhancer ---
+    // --- 8. Module: Interaction Enhancer (完整還原 v1.4.0) ---
     class InteractionEnhancer {
-        constructor(config) { this.config = config; }
+        constructor(config) {
+            this.config = config;
+            // v1.4.0 選擇器定義
+            this.CLICKABLE_CONTAINERS = [
+                'ytd-rich-item-renderer', 'ytd-video-renderer', 'ytd-compact-video-renderer',
+                'yt-lockup-view-model', 'ytd-playlist-renderer', 'ytd-compact-playlist-renderer',
+                'ytd-video-owner-renderer', 'ytd-grid-video-renderer'
+            ];
+            this.INLINE_PREVIEW_PLAYER = 'ytd-video-preview';
+        }
+
+        // v1.4.0 連結搜尋函數
+        findPrimaryLink(container) {
+            if (!container) return null;
+            const candidates = [
+                'a#thumbnail[href*="/watch?"]', 'a#thumbnail[href*="/shorts/"]', 'a#thumbnail[href*="/playlist?"]',
+                'a#video-title-link', 'a#video-title', 'a.yt-simple-endpoint#video-title', 'a.yt-lockup-view-model-wiz__title'
+            ];
+            for (const sel of candidates) {
+                const a = container.querySelector(sel);
+                if (a?.href) return a;
+            }
+            return container.querySelector('a[href*="/watch?"], a[href*="/shorts/"], a[href*="/playlist?"]');
+        }
+
         init() {
             document.addEventListener('click', (e) => {
                 if (!this.config.get('OPEN_IN_NEW_TAB')) return;
                 if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+
                 // 完整排除清單 (來自 v1.4.0)
                 const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next, .yt-core-attributed-string__link, #subscribe-button, .ytp-progress-bar, .ytp-chrome-bottom';
                 if (e.target.closest(exclusions)) return;
-                const link = e.target.closest('a');
-                if (!link || !link.href) return;
-                const url = new URL(link.href);
 
-                // 判斷是否為影片卡片連結 (透過 ID 或 容器)
-                // 1. 連結本身特徵 (最準確)
-                const isVideoLink = link.id === 'thumbnail' || link.id === 'video-title-link' || link.classList.contains('ytd-thumbnail');
+                let targetLink = null;
+                const previewPlayer = e.target.closest(this.INLINE_PREVIEW_PLAYER);
 
-                // 2. 容器特徵 (備援)
-                const container = e.target.closest('ytd-rich-item-renderer, ytd-video-renderer, ytd-grid-video-renderer, ytd-compact-video-renderer, yt-lockup-view-model, ytd-playlist-renderer, ytd-compact-playlist-renderer, ytd-rich-grid-media');
+                if (previewPlayer) {
+                    // 處理內嵌預覽播放器
+                    targetLink = this.findPrimaryLink(previewPlayer) || this.findPrimaryLink(previewPlayer.closest(this.CLICKABLE_CONTAINERS.join(',')));
+                } else {
+                    const container = e.target.closest(this.CLICKABLE_CONTAINERS.join(', '));
+                    if (!container) return;
 
-                if ((url.pathname.startsWith('/watch') || url.pathname.startsWith('/shorts') || url.pathname.startsWith('/playlist')) && (isVideoLink || container)) {
-                    e.preventDefault(); e.stopImmediatePropagation(); window.open(link.href, '_blank');
+                    // 頻道連結處理 (v1.4.0 特性)
+                    const channelLink = e.target.closest('a#avatar-link, .ytd-channel-name a, a[href^="/@"], a[href^="/channel/"]');
+                    targetLink = channelLink?.href ? channelLink : this.findPrimaryLink(container);
                 }
+
+                if (!targetLink) return;
+
+                try {
+                    const hostname = new URL(targetLink.href, location.origin).hostname;
+                    const isValidTarget = targetLink.href && /(^|\.)youtube\.com$/.test(hostname);
+                    if (isValidTarget) {
+                        e.preventDefault();
+                        e.stopImmediatePropagation();
+                        window.open(targetLink.href, '_blank');
+                    }
+                } catch (err) { }
             }, { capture: true });
         }
     }
@@ -604,7 +659,7 @@
         constructor(config, onRefresh) { this.config = config; this.onRefresh = onRefresh; }
         showMainMenu() {
             const i = (k) => this.config.get(k) ? '✅' : '❌';
-            const choice = prompt(`【 YouTube 淨化大師 v1.5.5 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n\n輸入選項:`);
+            const choice = prompt(`【 YouTube 淨化大師 v1.5.6 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n\n輸入選項:`);
             if (choice) this.handleMenu(choice);
         }
         handleMenu(c) {
@@ -696,7 +751,7 @@
             });
 
             this.filter.processPage();
-            Logger.info(`🚀 YouTube 淨化大師 v1.5.5 啟動`);
+            Logger.info(`🚀 YouTube 淨化大師 v1.5.6 啟動`);
         }
 
         refresh() {

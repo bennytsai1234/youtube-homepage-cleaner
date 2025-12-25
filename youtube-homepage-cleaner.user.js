@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.5.4
-// @description  為極致體驗而生的內容過濾器。v1.5.4 解決多影片點擊失效問題，優化容器判斷。
+// @version      1.5.5
+// @description  為極致體驗而生的內容過濾器。v1.5.5 補回 v1.4.0 遺漏功能 (推薦播放清單、會員優先過濾)。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -59,7 +59,8 @@
                     shorts_grid_shelf: true, movies_shelf: true,
                     youtube_featured_shelf: true, popular_gaming_shelf: true,
                     more_from_game_shelf: true, trending_playlist: true,
-                    inline_survey: true, clarify_box: true, explore_topics: true
+                    inline_survey: true, clarify_box: true, explore_topics: true,
+                    recommended_playlists: true, members_early_access: true
                 }
             };
             this.state = this._load();
@@ -196,7 +197,8 @@
                 { key: 'youtube_featured_shelf', rules: [/YouTube 精選/i] },
                 { key: 'shorts_block', rules: [/^Shorts$/i] },
                 { key: 'shorts_grid_shelf', rules: [/^Shorts$/i] },
-                { key: 'more_from_game_shelf', rules: [/^更多此遊戲相關內容$/i] }
+                { key: 'more_from_game_shelf', rules: [/^更多此遊戲相關內容$/i] },
+                { key: 'members_early_access', rules: [/會員優先|Members Early Access|Early access for members/i] }
             ];
         }
 
@@ -277,6 +279,14 @@
                     containers.forEach(c => rules.push(`${c}:has(${selector}) { display: none !important; }`));
                 }
             });
+
+            // 5.5 首頁推薦播放清單 (不影響頻道頁面)
+            if (enables.recommended_playlists) {
+                rules.push(`
+                    ytd-browse[page-subtype="home"] ytd-rich-item-renderer:has(a[href^="/playlist?list="]),
+                    ytd-browse[page-subtype="home"] ytd-rich-item-renderer:has([content-id^="PL"]) { display: none !important; }
+                `);
+            }
 
             GM_addStyle(rules.join('\n'));
             Logger.info('Static CSS rules injected');
@@ -568,7 +578,9 @@
             document.addEventListener('click', (e) => {
                 if (!this.config.get('OPEN_IN_NEW_TAB')) return;
                 if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-                if (e.target.closest('button, #menu, ytd-menu-renderer, yt-icon-button')) return;
+                // 完整排除清單 (來自 v1.4.0)
+                const exclusions = 'button, yt-icon-button, #menu, ytd-menu-renderer, ytd-toggle-button-renderer, yt-chip-cloud-chip-renderer, .yt-spec-button-shape-next, .yt-core-attributed-string__link, #subscribe-button, .ytp-progress-bar, .ytp-chrome-bottom';
+                if (e.target.closest(exclusions)) return;
                 const link = e.target.closest('a');
                 if (!link || !link.href) return;
                 const url = new URL(link.href);
@@ -592,7 +604,7 @@
         constructor(config, onRefresh) { this.config = config; this.onRefresh = onRefresh; }
         showMainMenu() {
             const i = (k) => this.config.get(k) ? '✅' : '❌';
-            const choice = prompt(`【 YouTube 淨化大師 v1.5.4 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n\n輸入選項:`);
+            const choice = prompt(`【 YouTube 淨化大師 v1.5.5 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n\n輸入選項:`);
             if (choice) this.handleMenu(choice);
         }
         handleMenu(c) {
@@ -684,7 +696,7 @@
             });
 
             this.filter.processPage();
-            Logger.info(`🚀 YouTube 淨化大師 v1.5.4 啟動`);
+            Logger.info(`🚀 YouTube 淨化大師 v1.5.5 啟動`);
         }
 
         refresh() {

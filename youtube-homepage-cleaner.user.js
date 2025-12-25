@@ -137,6 +137,176 @@
         }
     };
 
+    // --- 0.3 Internationalization (i18n) ---
+    const I18N = {
+        _lang: null,
+
+        // 語言字典
+        strings: {
+            'zh-TW': {
+                title: 'YouTube 淨化大師',
+                menu_rules: '📂 設定過濾規則',
+                menu_low_view: '低觀看數過濾 (含直播)',
+                menu_threshold: '🔢 設定閾值',
+                menu_advanced: '🚫 進階過濾',
+                menu_new_tab: '強制新分頁',
+                menu_debug: 'Debug',
+                menu_reset: '🔄 恢復預設',
+                menu_stats: '📊 過濾統計',
+                menu_export: '💾 匯出/匯入設定',
+                menu_lang: '🌐 語言',
+                menu_input: '輸入選項:',
+                stats_title: '【 過濾統計 】',
+                stats_empty: '尚未過濾任何內容',
+                stats_filtered: '已過濾 {0} 個項目',
+                export_title: '【 設定管理 】',
+                export_export: '📤 匯出設定',
+                export_import: '📥 匯入設定',
+                export_success: '✅ 設定已複製到剪貼簿！',
+                export_copy: '請複製以下設定 (Ctrl+C):',
+                import_prompt: '請貼上設定 JSON:',
+                import_success: '✅ 設定已成功匯入！',
+                import_fail: '❌ 匯入失敗: ',
+                rules_title: '【 過濾規則 】',
+                rules_back: '(0 返回)',
+                threshold_prompt: '閾值:',
+                reset_confirm: '重設?',
+                lang_title: '【 選擇語言 】',
+                back: '返回'
+            },
+            'zh-CN': {
+                title: 'YouTube 净化大师',
+                menu_rules: '📂 设置过滤规则',
+                menu_low_view: '低观看数过滤 (含直播)',
+                menu_threshold: '🔢 设置阈值',
+                menu_advanced: '🚫 高级过滤',
+                menu_new_tab: '强制新标签页',
+                menu_debug: 'Debug',
+                menu_reset: '🔄 恢复默认',
+                menu_stats: '📊 过滤统计',
+                menu_export: '💾 导出/导入设置',
+                menu_lang: '🌐 语言',
+                menu_input: '输入选项:',
+                stats_title: '【 过滤统计 】',
+                stats_empty: '尚未过滤任何内容',
+                stats_filtered: '已过滤 {0} 个项目',
+                export_title: '【 设置管理 】',
+                export_export: '📤 导出设置',
+                export_import: '📥 导入设置',
+                export_success: '✅ 设置已复制到剪贴板！',
+                export_copy: '请复制以下设置 (Ctrl+C):',
+                import_prompt: '请粘贴设置 JSON:',
+                import_success: '✅ 设置已成功导入！',
+                import_fail: '❌ 导入失败: ',
+                rules_title: '【 过滤规则 】',
+                rules_back: '(0 返回)',
+                threshold_prompt: '阈值:',
+                reset_confirm: '重置?',
+                lang_title: '【 选择语言 】',
+                back: '返回'
+            },
+            'en': {
+                title: 'YouTube Purifier',
+                menu_rules: '📂 Filter Rules',
+                menu_low_view: 'Low View Filter (incl. Live)',
+                menu_threshold: '🔢 Set Threshold',
+                menu_advanced: '🚫 Advanced Filters',
+                menu_new_tab: 'Force New Tab',
+                menu_debug: 'Debug',
+                menu_reset: '🔄 Reset to Default',
+                menu_stats: '📊 Filter Stats',
+                menu_export: '💾 Export/Import Settings',
+                menu_lang: '🌐 Language',
+                menu_input: 'Enter option:',
+                stats_title: '【 Filter Statistics 】',
+                stats_empty: 'No content filtered yet',
+                stats_filtered: 'Filtered {0} items',
+                export_title: '【 Settings Management 】',
+                export_export: '📤 Export Settings',
+                export_import: '📥 Import Settings',
+                export_success: '✅ Settings copied to clipboard!',
+                export_copy: 'Copy settings (Ctrl+C):',
+                import_prompt: 'Paste settings JSON:',
+                import_success: '✅ Settings imported successfully!',
+                import_fail: '❌ Import failed: ',
+                rules_title: '【 Filter Rules 】',
+                rules_back: '(0 Back)',
+                threshold_prompt: 'Threshold:',
+                reset_confirm: 'Reset?',
+                lang_title: '【 Select Language 】',
+                back: 'Back'
+            },
+            'ja': {
+                title: 'YouTube クリーナー',
+                menu_rules: '📂 フィルタルール',
+                menu_low_view: '低視聴数フィルター (ライブ含む)',
+                menu_threshold: '🔢 閾値設定',
+                menu_advanced: '🚫 詳細フィルター',
+                menu_new_tab: '新しいタブで開く',
+                menu_debug: 'デバッグ',
+                menu_reset: '🔄 初期化',
+                menu_stats: '📊 フィルター統計',
+                menu_export: '💾 設定のエクスポート/インポート',
+                menu_lang: '🌐 言語',
+                menu_input: 'オプションを入力:',
+                stats_title: '【 フィルター統計 】',
+                stats_empty: 'まだフィルターされたコンテンツはありません',
+                stats_filtered: '{0} 件をフィルターしました',
+                export_title: '【 設定管理 】',
+                export_export: '📤 設定をエクスポート',
+                export_import: '📥 設定をインポート',
+                export_success: '✅ 設定をクリップボードにコピーしました！',
+                export_copy: '設定をコピー (Ctrl+C):',
+                import_prompt: '設定JSONを貼り付け:',
+                import_success: '✅ 設定をインポートしました！',
+                import_fail: '❌ インポート失敗: ',
+                rules_title: '【 フィルタールール 】',
+                rules_back: '(0 戻る)',
+                threshold_prompt: '閾値:',
+                reset_confirm: 'リセットしますか?',
+                lang_title: '【 言語選択 】',
+                back: '戻る'
+            }
+        },
+
+        // 自動偵測語言
+        detectLanguage() {
+            const ytLang = document.documentElement.lang || navigator.language || 'zh-TW';
+            if (ytLang.startsWith('zh-CN') || ytLang.startsWith('zh-Hans')) return 'zh-CN';
+            if (ytLang.startsWith('zh')) return 'zh-TW';
+            if (ytLang.startsWith('ja')) return 'ja';
+            return 'en';
+        },
+
+        get lang() {
+            if (!this._lang) {
+                this._lang = GM_getValue('ui_language', null) || this.detectLanguage();
+            }
+            return this._lang;
+        },
+
+        set lang(value) {
+            this._lang = value;
+            GM_setValue('ui_language', value);
+        },
+
+        // 取得翻譯字串
+        t(key, ...args) {
+            const str = this.strings[this.lang]?.[key] || this.strings['en'][key] || key;
+            return str.replace(/\{(\d+)\}/g, (_, i) => args[i] ?? '');
+        },
+
+        // 語言清單
+        get availableLanguages() {
+            return {
+                'zh-TW': '繁體中文',
+                'zh-CN': '简体中文',
+                'en': 'English',
+                'ja': '日本語'
+            };
+        }
+    };
+
     // --- 1. Core: Configuration Management ---
     class ConfigManager {
         constructor() {
@@ -812,80 +982,112 @@
         }
     }
 
-    // --- 9. Module: UI Manager (Enhanced with Stats) ---
+    // --- 9. Module: UI Manager (Enhanced with i18n) ---
     class UIManager {
         constructor(config, onRefresh) { this.config = config; this.onRefresh = onRefresh; }
+
+        t(key, ...args) { return I18N.t(key, ...args); }
+
         showMainMenu() {
             const i = (k) => this.config.get(k) ? '✅' : '❌';
             const statsInfo = FilterStats.session.total > 0 ? ` (${FilterStats.session.total})` : '';
-            const choice = prompt(`【 YouTube 淨化大師 v2.0.0-rc 】\n\n1. 📂 設定過濾規則\n2. ${i('ENABLE_LOW_VIEW_FILTER')} 低觀看數過濾 (含直播)\n3. 🔢 設定閾值 (${this.config.get('LOW_VIEW_THRESHOLD')})\n4. 🚫 進階過濾\n5. ${i('OPEN_IN_NEW_TAB')} 強制新分頁\n6. ${i('DEBUG_MODE')} Debug\n7. 🔄 恢復預設\n8. 📊 過濾統計${statsInfo}\n9. 💾 匯出/匯入設定\n\n輸入選項:`);
+            const langName = I18N.availableLanguages[I18N.lang];
+            const choice = prompt(
+                `【 ${this.t('title')} v2.0.0-rc 】\n\n` +
+                `1. ${this.t('menu_rules')}\n` +
+                `2. ${i('ENABLE_LOW_VIEW_FILTER')} ${this.t('menu_low_view')}\n` +
+                `3. ${this.t('menu_threshold')} (${this.config.get('LOW_VIEW_THRESHOLD')})\n` +
+                `4. ${this.t('menu_advanced')}\n` +
+                `5. ${i('OPEN_IN_NEW_TAB')} ${this.t('menu_new_tab')}\n` +
+                `6. ${i('DEBUG_MODE')} ${this.t('menu_debug')}\n` +
+                `7. ${this.t('menu_reset')}\n` +
+                `8. ${this.t('menu_stats')}${statsInfo}\n` +
+                `9. ${this.t('menu_export')}\n` +
+                `10. ${this.t('menu_lang')} [${langName}]\n\n` +
+                this.t('menu_input')
+            );
             if (choice) this.handleMenu(choice);
         }
         handleMenu(c) {
             switch (c.trim()) {
                 case '1': this.showRuleMenu(); break;
                 case '2': this.toggle('ENABLE_LOW_VIEW_FILTER'); break;
-                case '3': const v = prompt('閾值:'); if (v) this.update('LOW_VIEW_THRESHOLD', Number(v)); break;
+                case '3': const v = prompt(this.t('threshold_prompt')); if (v) this.update('LOW_VIEW_THRESHOLD', Number(v)); break;
                 case '4': this.showAdvancedMenu(); break;
                 case '5': this.toggle('OPEN_IN_NEW_TAB'); break;
                 case '6': this.toggle('DEBUG_MODE'); break;
-                case '7': if (confirm('重設?')) { Object.keys(this.config.defaults).forEach(k => this.config.set(k, this.config.defaults[k])); this.update('', null); } break;
+                case '7': if (confirm(this.t('reset_confirm'))) { Object.keys(this.config.defaults).forEach(k => this.config.set(k, this.config.defaults[k])); this.update('', null); } break;
                 case '8': this.showStats(); break;
                 case '9': this.showExportImportMenu(); break;
+                case '10': this.showLanguageMenu(); break;
             }
         }
         showStats() {
             const summary = FilterStats.getSummary();
-            alert(`【 過濾統計 】\n\n${summary || '尚未過濾任何內容'}`);
+            alert(`${this.t('stats_title')}\n\n${summary || this.t('stats_empty')}`);
+            this.showMainMenu();
+        }
+        showLanguageMenu() {
+            const langs = I18N.availableLanguages;
+            const keys = Object.keys(langs);
+            const current = I18N.lang;
+            const menu = keys.map((k, i) => `${i + 1}. ${k === current ? '✅' : '⬜'} ${langs[k]}`).join('\n');
+            const c = prompt(`${this.t('lang_title')}\n\n${menu}\n\n0. ${this.t('back')}`);
+            if (c && c !== '0') {
+                const idx = parseInt(c) - 1;
+                if (keys[idx]) {
+                    I18N.lang = keys[idx];
+                    alert(`✅ ${langs[keys[idx]]}`);
+                }
+            }
             this.showMainMenu();
         }
         showExportImportMenu() {
-            const c = prompt('【 設定管理 】\n\n1. 📤 匯出設定\n2. 📥 匯入設定\n0. 返回');
+            const c = prompt(`${this.t('export_title')}\n\n1. ${this.t('export_export')}\n2. ${this.t('export_import')}\n0. ${this.t('back')}`);
             if (c === '1') this.exportSettings();
             else if (c === '2') this.importSettings();
             else if (c === '0') this.showMainMenu();
         }
         exportSettings() {
             const exportData = {
-                version: '2.0.0-beta',
+                version: '2.0.0-rc',
                 timestamp: new Date().toISOString(),
-                settings: this.config.state
+                settings: this.config.state,
+                language: I18N.lang
             };
             const json = JSON.stringify(exportData, null, 2);
 
-            // 複製到剪貼簿
             navigator.clipboard.writeText(json).then(() => {
-                alert('✅ 設定已複製到剪貼簿！\n\n請將此 JSON 保存到安全的地方。');
+                alert(this.t('export_success'));
             }).catch(() => {
-                // Fallback: 顯示在 prompt 中讓用戶手動複製
-                prompt('請複製以下設定 (Ctrl+C):', json);
+                prompt(this.t('export_copy'), json);
             });
             this.showExportImportMenu();
         }
         importSettings() {
-            const json = prompt('請貼上設定 JSON:');
+            const json = prompt(this.t('import_prompt'));
             if (!json) { this.showExportImportMenu(); return; }
 
             try {
                 const data = JSON.parse(json);
-                if (!data.settings) throw new Error('無效的設定格式');
+                if (!data.settings) throw new Error('Invalid format');
 
-                // 合併設定
                 for (const key in data.settings) {
                     if (key in this.config.defaults) {
                         this.config.set(key, data.settings[key]);
                     }
                 }
-                alert('✅ 設定已成功匯入！');
+                if (data.language) I18N.lang = data.language;
+                alert(this.t('import_success'));
                 this.onRefresh();
             } catch (e) {
-                alert('❌ 匯入失敗: ' + e.message);
+                alert(this.t('import_fail') + e.message);
             }
             this.showExportImportMenu();
         }
         showRuleMenu() {
             const r = this.config.get('RULE_ENABLES'); const k = Object.keys(r);
-            const c = prompt('【 過濾規則 】(0 返回)\n' + k.map((key, i) => `${i + 1}. [${r[key] ? '✅' : '❌'}] ${key}`).join('\n'));
+            const c = prompt(`${this.t('rules_title')} ${this.t('rules_back')}\n` + k.map((key, i) => `${i + 1}. [${r[key] ? '✅' : '❌'}] ${key}`).join('\n'));
             if (c && c !== '0') { this.config.toggleRule(k[parseInt(c) - 1]); this.onRefresh(); this.showRuleMenu(); } else if (c === '0') this.showMainMenu();
         }
         showAdvancedMenu() {

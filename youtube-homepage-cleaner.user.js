@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         YouTube 淨化大師
 // @namespace    http://tampermonkey.net/
-// @version      1.5.0
-// @description  為極致體驗而生的內容過濾器。v1.5.0: 全新架構 + 效能優化 + 國際化支援。
+// @version      1.6.0
+// @description  為極致體驗而生的內容過濾器。v1.6.0: 全新核心架構 + 效能優化 + 國際化支援。
 // @author       Benny, AI Collaborators & The Final Optimizer
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
@@ -1142,7 +1142,7 @@
             const statsInfo = FilterStats.session.total > 0 ? ` (${FilterStats.session.total})` : '';
             const langName = I18N.availableLanguages[I18N.lang];
             const choice = prompt(
-                `【 ${this.t('title')} v1.5.0 】\n\n` +
+                `【 ${this.t('title')} v1.6.0 】\n\n` +
                 `1. ${this.t('menu_rules')}\n` +
                 `2. ${i('ENABLE_LOW_VIEW_FILTER')} ${this.t('menu_low_view')}\n` +
                 `3. ${this.t('menu_threshold')} (${this.config.get('LOW_VIEW_THRESHOLD')})\n` +
@@ -1199,7 +1199,7 @@
         }
         exportSettings() {
             const exportData = {
-                version: '1.5.0',
+                version: '1.6.0',
                 timestamp: new Date().toISOString(),
                 settings: this.config.state,
                 language: I18N.lang
@@ -1320,7 +1320,7 @@
             });
 
             this.filter.processPage();
-            Logger.info(`🚀 YouTube 淨化大師 v1.5.0 啟動`);
+            Logger.info(`🚀 YouTube 淨化大師 v1.6.0 啟動`);
         }
 
         refresh() {

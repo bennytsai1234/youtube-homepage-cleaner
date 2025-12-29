@@ -1,10 +1,10 @@
 <div align="center">
 
-# 🎯 YouTube 淨化大師 | YouTube Homepage Cleaner
+# 🎯 YouTube Cleaner - Block Shorts, Ads & Clutter
 
-### 🚫 去廣告 · 🔇 去 Shorts · 🧹 去雜訊 · ⚡ 極致效能
+### 🚫 Hide Shorts · 🔇 Block Ads · 🧹 Filter Clutter · ⚡ High Performance
 
-**讓 YouTube 回歸純淨，專注於你真正想看的內容**
+**隱藏 Shorts、廣告與雜訊，讓 YouTube 回歸純淨**
 
 [![GitHub Stars](https://img.shields.io/github/stars/bennytsai1234/youtube-homepage-cleaner?style=for-the-badge&logo=github&color=gold)](https://github.com/bennytsai1234/youtube-homepage-cleaner/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/bennytsai1234/youtube-homepage-cleaner?style=for-the-badge&logo=github&color=blue)](https://github.com/bennytsai1234/youtube-homepage-cleaner/network/members)

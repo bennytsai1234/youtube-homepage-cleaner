@@ -1,9 +1,15 @@
 // ==UserScript==
-// @name         YouTube 淨化大師
+// @name         YouTube Cleaner - Block Shorts, Ads & Clutter
+// @name:zh-TW   YouTube Cleaner - 隱藏 Shorts、廣告與雜訊
+// @name:zh-CN   YouTube Cleaner - 隐藏 Shorts、广告与杂讯
+// @name:ja      YouTube Cleaner - Shorts・広告・雑音をブロック
 // @namespace    http://tampermonkey.net/
-// @version      1.6.0
-// @description  為極致體驗而生的內容過濾器。v1.6.0: 全新核心架構 + 效能優化 + 國際化支援。
-// @author       Benny, AI Collaborators & The Final Optimizer
+// @version      1.6.1
+// @description  Hide YouTube Shorts, ads, low-view videos, clutter & bypass anti-adblock. 20+ filter rules, fully customizable.
+// @description:zh-TW  隱藏 Shorts、廣告、低觀看數影片與雜訊，並繞過反廣告攔截。20+ 過濾規則，完全可自訂。
+// @description:zh-CN  隐藏 Shorts、广告、低观看数视频与杂讯，并绕过反广告拦截。20+ 过滤规则，完全可自定义。
+// @description:ja     Shorts、広告、低視聴数動画、雑音を非表示。アンチ広告ブロック回避対応。20以上のフィルタールール。
+// @author       Benny & AI Collaborators
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*
 // @grant        GM_info
@@ -693,17 +699,17 @@
                     tp-yt-iron-overlay-backdrop:has(~ tp-yt-paper-dialog ytd-enforcement-message-view-model),
                     tp-yt-iron-overlay-backdrop.opened,
                     yt-playability-error-supported-renderers:has(ytd-enforcement-message-view-model) { display: none !important; }
-                    
+
                     ytd-app:has(ytd-enforcement-message-view-model), body:has(ytd-enforcement-message-view-model), html:has(ytd-enforcement-message-view-model) {
-                        overflow: auto !important; overflow-y: auto !important; position: static !important; 
-                        pointer-events: auto !important; height: auto !important; top: 0 !important; 
+                        overflow: auto !important; overflow-y: auto !important; position: static !important;
+                        pointer-events: auto !important; height: auto !important; top: 0 !important;
                         margin-right: 0 !important; overscroll-behavior: auto !important;
                     }
-                    
-                    ytd-app[aria-hidden="true"]:has(ytd-enforcement-message-view-model) { 
-                        aria-hidden: false !important; display: block !important; 
+
+                    ytd-app[aria-hidden="true"]:has(ytd-enforcement-message-view-model) {
+                        aria-hidden: false !important; display: block !important;
                     }
-                    
+
                     ytd-app { --ytd-app-scroll-offset: 0 !important; }
                 `);
             }

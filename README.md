@@ -2,11 +2,11 @@
 
 ![YouTube Cleaner Banner](assets/banner.png)
 
-# 🎯 YouTube Cleaner - Block Shorts, Ads & Clutter
+# 🎯 YouTube Cleaner - Remove Shorts, Clutter & Suggestions
 
-### 🚫 Hide Shorts · 🔇 Block Ads · 🧹 Filter Clutter · ⚡ High Performance
+### 🚫 Hide Shorts · 🧹 Remove Clutter · 📺 Clean Layout · ⚡ High Performance
 
-**隱藏 Shorts、廣告與雜訊，讓 YouTube 回歸純淨**
+**隱藏 Shorts、過濾推薦與雜訊，讓 YouTube 回歸純淨**
 
 [![GitHub Stars](https://img.shields.io/github/stars/bennytsai1234/youtube-homepage-cleaner?style=for-the-badge&logo=github&color=gold)](https://github.com/bennytsai1234/youtube-homepage-cleaner/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/bennytsai1234/youtube-homepage-cleaner?style=for-the-badge&logo=github&color=blue)](https://github.com/bennytsai1234/youtube-homepage-cleaner/network/members)
@@ -43,26 +43,26 @@
 
 ## ✨ 主要功能與特色
 
-### 🧼 強大的內容過濾引擎
-腳本會自動並精準地移除頁面上的各種干擾元素，您可以透過選單獨立開關每一條規則：
+### 🧼 介面淨化與過濾 (UI Cleaning)
+腳本會移除頁面上的特定元素，您可以透過選單獨立開關每一條規則：
 
 | 類別 | 過濾內容 |
 |:---|:---|
-| 🚫 **廣告與推廣** | 影片廣告、首頁橫幅、贊助商內容、Premium 推廣、問卷調查 |
-| 📱 **Shorts** | 首頁 Shorts 區塊、搜尋結果 Shorts、Shorts Grid |
-| 🎬 **推薦干擾** | 合輯 (Mix)、新聞快報、貼文、電影推薦、YouTube 精選、熱門遊戲 |
-| 📑 **播放清單** | 智慧隱藏首頁推薦播放清單，但**保留**個人與頻道頁面播放清單 |
-| 👑 **特殊內容** | 會員專屬影片 |
-| 📉 **低熱度內容** | 自動過濾低觀看數影片 (**閾值可自訂**)，包含 **4 小時豁免期**保護新影片 |
+| 🚫 **廣告區塊** | 隱藏首頁橫幅、贊助商區塊、Premium 推廣、問卷調查 (僅隱藏介面元素) |
+| 📱 **Shorts** | 隱藏首頁 Shorts 區塊、搜尋結果 Shorts、Shorts Grid |
+| 🎬 **版面整理** | 隱藏合輯 (Mix)、新聞快報、社群貼文、電影推薦、YouTube 精選、熱門遊戲 |
+| 📑 **播放清單** | 隱藏首頁推薦播放清單 (不影響頻道頁面) |
+| 👑 **特定內容** | 隱藏會員專屬影片 |
+| 📉 **低觀看數過濾** | 隱藏低觀看數影片 (**閾值與 4 小時豁免期可自訂**) |
 
 ---
 
-### 🖱️ 全方位點擊優化
-告別 YouTube 的頁內跳轉（SPA）機制，回歸最直覺的多分頁瀏覽體驗：
+### 🖱️ 瀏覽體驗優化
+改善 YouTube 的瀏覽行為：
 
-- 🚀 **一律在新分頁開啟**: 影片、Shorts、播放清單、頻道連結
-- 🧠 **範圍覆蓋完整**: 首頁、搜尋結果、影片頁面下方作者區塊
-- 🔗 **流程不中斷**: 探索新內容不會打斷當前頁面
+- 🚀 **新分頁開啟**: 可強制影片、Shorts 與播放清單連結在新分頁開啟，避免打斷當前觀看進度 (支援範圍：首頁、搜尋結果、相關影片)。
+- 🛡️ **彈窗處理**: 自動偵測並關閉 YouTube 的反廣告攔截警告彈窗，並恢復頁面捲動功能 (非暴力阻擋，僅處理介面阻礙)。
+- 🌐 **多語言支援**: 介面支援繁體中文、简体中文、English、日本語 (自動偵測)。
 
 ---
 

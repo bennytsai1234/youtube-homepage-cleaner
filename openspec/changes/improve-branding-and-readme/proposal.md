@@ -5,7 +5,8 @@ The current `README.md` is functional but lacks visual impact. The project name 
 
 ## What Changes
 - Add a high-quality "Before vs After" banner image to visually demonstrate the script's value.
-- Unify English branding to "YouTube Cleaner" across the documentation and script.
+- Refine description: Change "Block Ads" to "Hide Ad Banners" or "Clean Layout" to avoid misleading users about video ad blocking.
+- Unify English branding to "YouTube Cleaner".
 - Enhance the visual prominence of the "Star this project" call-to-action.
 - Add a direct link to GreasyFork for alternative installation.
 

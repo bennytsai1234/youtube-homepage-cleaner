@@ -1,14 +1,14 @@
 // ==UserScript==
-// @name         YouTube Cleaner - Block Shorts, Ads & Clutter
-// @name:zh-TW   YouTube Cleaner - 隱藏 Shorts、廣告與雜訊
-// @name:zh-CN   YouTube Cleaner - 隐藏 Shorts、广告与杂讯
-// @name:ja      YouTube Cleaner - Shorts・広告・雑音をブロック
+// @name         YouTube Cleaner - Remove Shorts, Recommendations & Clutter
+// @name:zh-TW   YouTube Cleaner - 隱藏 Shorts、推薦與雜訊
+// @name:zh-CN   YouTube Cleaner - 隐藏 Shorts、推荐与杂讯
+// @name:ja      YouTube Cleaner - Shorts・おすすめ・雑音を非表示
 // @namespace    http://tampermonkey.net/
 // @version      1.6.1
-// @description  Hide YouTube Shorts, ads, low-view videos, clutter & bypass anti-adblock. 20+ filter rules, fully customizable.
-// @description:zh-TW  隱藏 Shorts、廣告、低觀看數影片與雜訊，並繞過反廣告攔截。20+ 過濾規則，完全可自訂。
-// @description:zh-CN  隐藏 Shorts、广告、低观看数视频与杂讯，并绕过反广告拦截。20+ 过滤规则，完全可自定义。
-// @description:ja     Shorts、広告、低視聴数動画、雑音を非表示。アンチ広告ブロック回避対応。20以上のフィルタールール。
+// @description  Clean YouTube interface by hiding Shorts, suggestions, and clutter elements. 20+ custom rules.
+// @description:zh-TW  淨化 YouTube 介面，隱藏 Shorts、推薦內容與雜訊元素。20+ 過濾規則，完全可自訂。
+// @description:zh-CN  净化 YouTube 界面，隐藏 Shorts、推荐内容与杂讯元素。20+ 过滤规则，完全可自定义。
+// @description:ja     YouTube インターフェースをクリーンアップ。Shorts、おすすめ、雑音を非表示にします。
 // @author       Benny & AI Collaborators
 // @match        https://www.youtube.com/*
 // @exclude      https://www.youtube.com/embed/*

@@ -4,5 +4,5 @@
 ## 2. Documentation
 - [x] 2.1 Update `README.md` title and branding to "YouTube Cleaner".
 - [x] 2.2 Insert banner image at the top of `README.md`.
-- [x] 2.3 Optimize "Star this project" section for higher visibility.
+- [ ] 2.5 Refine "Block Ads" claims to "Hide Ad Components" or "Remove Clutter" in `README.md` and `user.js` headers.
 - [x] 2.4 Add GreasyFork installation link.

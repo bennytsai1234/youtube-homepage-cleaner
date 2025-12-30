@@ -17,6 +17,10 @@ A Tampermonkey userscript designed to purify the YouTube homepage by removing Sh
 - **Constants**: Uppercase with underscores (e.g., `SELECTORS`, `RULE_ENABLES`).
 - **JSDoc**: Use basic JSDoc for complex functions.
 
+### Language Requirement
+- **Communication**: All AI responses and documentation MUST be in **Traditional Chinese (繁體中文)** unless explicitly requested otherwise.
+- **Code Comments**: Prefer Traditional Chinese for complex logic explanations.
+
 ### Architecture Patterns
 - **Modular Design**: Logic split into distinct modules (Config, Utils, Logger, Stats, Style, AdBlockGuard).
 - **Centralized Selectors**: All DOM selectors are defined in a single `SELECTORS` object to ease maintenance when YouTube updates its DOM.

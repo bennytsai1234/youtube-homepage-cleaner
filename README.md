@@ -12,9 +12,8 @@
 [![GitHub Forks](https://img.shields.io/github/forks/bennytsai1234/youtube-homepage-cleaner?style=for-the-badge&logo=github&color=blue)](https://github.com/bennytsai1234/youtube-homepage-cleaner/network/members)
 [![License](https://img.shields.io/github/license/bennytsai1234/youtube-homepage-cleaner?style=for-the-badge&color=green)](LICENSE)
 [![Version](https://img.shields.io/badge/version-v1.6.0-orange?style=for-the-badge)](https://github.com/bennytsai1234/youtube-homepage-cleaner/releases)
-[![Install from GreasyFork](https://img.shields.io/badge/GreasyFork-Install_Now-red?style=for-the-badge&logo=tampermonkey)](https://greasyfork.org/scripts/YOUR_SCRIPT_ID)
 
-[📥 **一鍵安裝**](#-安裝教學) · [✨ **功能特色**](#-主要功能與特色) · [📖 **更新日誌**](#-版本紀錄) · [🐛 **問題回報**](https://github.com/bennytsai1234/youtube-homepage-cleaner/issues)
+[✨ **功能特色**](#-主要功能與特色) · [📖 **更新日誌**](#-版本紀錄) · [🐛 **問題回報**](https://github.com/bennytsai1234/youtube-homepage-cleaner/issues)
 
 ---
 

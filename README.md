@@ -1,5 +1,7 @@
 <div align="center">
 
+![YouTube Cleaner Banner](assets/banner.png)
+
 # 🎯 YouTube Cleaner - Block Shorts, Ads & Clutter
 
 ### 🚫 Hide Shorts · 🔇 Block Ads · 🧹 Filter Clutter · ⚡ High Performance
@@ -10,14 +12,16 @@
 [![GitHub Forks](https://img.shields.io/github/forks/bennytsai1234/youtube-homepage-cleaner?style=for-the-badge&logo=github&color=blue)](https://github.com/bennytsai1234/youtube-homepage-cleaner/network/members)
 [![License](https://img.shields.io/github/license/bennytsai1234/youtube-homepage-cleaner?style=for-the-badge&color=green)](LICENSE)
 [![Version](https://img.shields.io/badge/version-v1.6.0-orange?style=for-the-badge)](https://github.com/bennytsai1234/youtube-homepage-cleaner/releases)
+[![Install from GreasyFork](https://img.shields.io/badge/GreasyFork-Install_Now-red?style=for-the-badge&logo=tampermonkey)](https://greasyfork.org/scripts/YOUR_SCRIPT_ID)
 
 [📥 **一鍵安裝**](#-安裝教學) · [✨ **功能特色**](#-主要功能與特色) · [📖 **更新日誌**](#-版本紀錄) · [🐛 **問題回報**](https://github.com/bennytsai1234/youtube-homepage-cleaner/issues)
 
 ---
 
 ### ⭐ 覺得好用嗎？幫我點顆星星吧！
+**Your stars are my power to keep updating!**
 
-[![Star This Project](https://img.shields.io/badge/⭐_Star_This_Project-支持開發者-yellow?style=for-the-badge&logo=github)](https://github.com/bennytsai1234/youtube-homepage-cleaner)
+[![Star This Project](https://img.shields.io/badge/⭐_Star_This_Project-支持開發者-yellow?style=for-the-badge&logo=github&labelColor=181717)](https://github.com/bennytsai1234/youtube-homepage-cleaner)
 
 </div>
 

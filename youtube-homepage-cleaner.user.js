@@ -234,7 +234,7 @@
                 adv_clear: '清空'
             },
             'en': {
-                title: 'YouTube Purifier',
+                title: 'YouTube Cleaner',
                 menu_rules: '📂 Filter Rules',
                 menu_low_view: 'Low View Filter (incl. Live)',
                 menu_threshold: '🔢 Set Threshold',

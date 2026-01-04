@@ -51,21 +51,21 @@
 
 ---
 
-## � 舊用戶注意 (原「YouTube 淨化大師」)
+##  舊用戶注意 (原「YouTube 淨化大師」)
 
 > ⚠️ **這是同一個腳本！** 只是改了名字而已。
 >
 > 如果你之前安裝的是「**YouTube 淨化大師**」，**不需要重新安裝**！
 > Tampermonkey 會自動更新，你的設定也會保留。
 >
-> 新名稱：`YouTube Cleaner - Block Shorts, Ads & Clutter`
+> 新名稱：`YouTube Cleaner - Remove Shorts, Recommendations & Clutter`
 
 ---
 
-## �📋 版本紀錄
+## 📋 版本紀錄
 
 ### v1.6.1 (2025-12-29)
-- 🏷️ 新名稱：YouTube Cleaner - Block Shorts, Ads & Clutter
+- 🏷️ 新名稱：YouTube Cleaner - Remove Shorts, Recommendations & Clutter
 - 🌐 多語言 metadata 支援
 
 ### v1.6.0 (2025-12-26)

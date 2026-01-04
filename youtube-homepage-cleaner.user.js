@@ -155,7 +155,8 @@
                 menu_low_view: '低觀看數過濾 (含直播)',
                 menu_threshold: '🔢 設定閾值',
                 menu_advanced: '🚫 進階過濾',
-                menu_new_tab: '強制新分頁',
+                menu_new_tab: '強制新分頁 (影片)',
+                menu_notification_new_tab: '強制新分頁 (通知)',
                 menu_debug: 'Debug',
                 menu_reset: '🔄 恢復預設',
                 menu_stats: '📊 過濾統計',
@@ -197,7 +198,8 @@
                 menu_low_view: '低观看数过滤 (含直播)',
                 menu_threshold: '🔢 设置阈值',
                 menu_advanced: '🚫 高级过滤',
-                menu_new_tab: '强制新标签页',
+                menu_new_tab: '强制新标签页 (视频)',
+                menu_notification_new_tab: '强制新标签页 (通知)',
                 menu_debug: 'Debug',
                 menu_reset: '🔄 恢复默认',
                 menu_stats: '📊 过滤统计',
@@ -239,7 +241,8 @@
                 menu_low_view: 'Low View Filter (incl. Live)',
                 menu_threshold: '🔢 Set Threshold',
                 menu_advanced: '🚫 Advanced Filters',
-                menu_new_tab: 'Force New Tab',
+                menu_new_tab: 'Force New Tab (Video)',
+                menu_notification_new_tab: 'Force New Tab (Notif)',
                 menu_debug: 'Debug',
                 menu_reset: '🔄 Reset to Default',
                 menu_stats: '📊 Filter Stats',
@@ -281,7 +284,8 @@
                 menu_low_view: '低視聴数フィルター (ライブ含む)',
                 menu_threshold: '🔢 閾値設定',
                 menu_advanced: '🚫 詳細フィルター',
-                menu_new_tab: '新しいタブで開く',
+                menu_new_tab: '新しいタブで開く (動画)',
+                menu_notification_new_tab: '新しいタブで開く (通知)',
                 menu_debug: 'デバッグ',
                 menu_reset: '🔄 初期化',
                 menu_stats: '📊 フィルター統計',
@@ -470,6 +474,7 @@
                 ENABLE_LOW_VIEW_FILTER: true,
                 DEBUG_MODE: false,
                 OPEN_IN_NEW_TAB: true,
+                OPEN_NOTIFICATIONS_IN_NEW_TAB: true,
                 ENABLE_KEYWORD_FILTER: false,
                 KEYWORD_BLACKLIST: [],
                 ENABLE_CHANNEL_FILTER: false,
@@ -1102,6 +1107,22 @@
 
         init() {
             document.addEventListener('click', (e) => {
+                // 1. 通知新分頁開啟邏輯 (優先處理)
+                if (this.config.get('OPEN_NOTIFICATIONS_IN_NEW_TAB')) {
+                    const notification = e.target.closest('ytd-notification-renderer');
+                    if (notification) {
+                        const link = e.target.closest('a.yt-simple-endpoint');
+                        // 確保只是點擊通知內容，而非側邊選單或其他按鈕
+                        if (link && link.href && !e.target.closest('yt-icon-button')) {
+                            e.preventDefault();
+                            e.stopImmediatePropagation();
+                            window.open(link.href, '_blank');
+                            return;
+                        }
+                    }
+                }
+
+                // 2. 一般影片新分頁開啟
                 if (!this.config.get('OPEN_IN_NEW_TAB')) return;
                 if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
 
@@ -1154,11 +1175,12 @@
                 `3. ${this.t('menu_threshold')} (${this.config.get('LOW_VIEW_THRESHOLD')})\n` +
                 `4. ${this.t('menu_advanced')}\n` +
                 `5. ${i('OPEN_IN_NEW_TAB')} ${this.t('menu_new_tab')}\n` +
-                `6. ${i('DEBUG_MODE')} ${this.t('menu_debug')}\n` +
-                `7. ${this.t('menu_reset')}\n` +
-                `8. ${this.t('menu_stats')}${statsInfo}\n` +
-                `9. ${this.t('menu_export')}\n` +
-                `10. ${this.t('menu_lang')} [${langName}]\n\n` +
+                `6. ${i('OPEN_NOTIFICATIONS_IN_NEW_TAB')} ${this.t('menu_notification_new_tab')}\n` +
+                `7. ${i('DEBUG_MODE')} ${this.t('menu_debug')}\n` +
+                `8. ${this.t('menu_reset')}\n` +
+                `9. ${this.t('menu_stats')}${statsInfo}\n` +
+                `10. ${this.t('menu_export')}\n` +
+                `11. ${this.t('menu_lang')} [${langName}]\n\n` +
                 this.t('menu_input')
             );
             if (choice) this.handleMenu(choice);
@@ -1170,11 +1192,12 @@
                 case '3': const v = prompt(this.t('threshold_prompt')); if (v) this.update('LOW_VIEW_THRESHOLD', Number(v)); break;
                 case '4': this.showAdvancedMenu(); break;
                 case '5': this.toggle('OPEN_IN_NEW_TAB'); break;
-                case '6': this.toggle('DEBUG_MODE'); break;
-                case '7': if (confirm(this.t('reset_confirm'))) { Object.keys(this.config.defaults).forEach(k => this.config.set(k, this.config.defaults[k])); this.update('', null); } break;
-                case '8': this.showStats(); break;
-                case '9': this.showExportImportMenu(); break;
-                case '10': this.showLanguageMenu(); break;
+                case '6': this.toggle('OPEN_NOTIFICATIONS_IN_NEW_TAB'); break;
+                case '7': this.toggle('DEBUG_MODE'); break;
+                case '8': if (confirm(this.t('reset_confirm'))) { Object.keys(this.config.defaults).forEach(k => this.config.set(k, this.config.defaults[k])); this.update('', null); } break;
+                case '9': this.showStats(); break;
+                case '10': this.showExportImportMenu(); break;
+                case '11': this.showLanguageMenu(); break;
             }
         }
         showStats() {

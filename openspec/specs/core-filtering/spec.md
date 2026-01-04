@@ -1,5 +1,8 @@
-## ADDED Requirements
+# core-filtering Specification
 
+## Purpose
+TBD - created by archiving change reverse-engineer-specs. Update Purpose after archive.
+## Requirements
 ### Requirement: Low View Count Filtering
 The system SHALL hide videos that do not meet a configurable view count threshold to filter out low-quality content.
 
@@ -28,3 +31,4 @@ The system SHALL hide videos if their title or channel name matches user-defined
 #### Scenario: Keyword match
 - **WHEN** a video title contains a blacklisted keyword (e.g., "crypto")
 - **THEN** the video is hidden
+

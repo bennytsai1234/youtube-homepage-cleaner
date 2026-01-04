@@ -1,5 +1,8 @@
-## ADDED Requirements
+# i18n Specification
 
+## Purpose
+TBD - created by archiving change reverse-engineer-specs. Update Purpose after archive.
+## Requirements
 ### Requirement: Multi-language Support
 The system SHALL support multiple interface languages and automatically detect the user's preference.
 
@@ -20,3 +23,4 @@ The system SHALL parse and normalize view counts and time units across different
 #### Scenario: Parse Chinese Units
 - **WHEN** parsing "1.2萬觀看"
 - **THEN** it is correctly interpreted as 12,000 views
+

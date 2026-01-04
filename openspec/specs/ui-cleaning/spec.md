@@ -1,5 +1,8 @@
-## ADDED Requirements
+# ui-cleaning Specification
 
+## Purpose
+TBD - created by archiving change reverse-engineer-specs. Update Purpose after archive.
+## Requirements
 ### Requirement: Static Ad Hiding
 The system SHALL use CSS rules to hide sponsored content, banners, and ad slots immediately upon page load.
 
@@ -20,3 +23,4 @@ The system SHALL optionally hide "Recommended Playlists" on the homepage while p
 #### Scenario: Hide homepage playlists
 - **WHEN** on the homepage (`page-subtype="home"`)
 - **THEN** playlist items in the rich grid are hidden
+

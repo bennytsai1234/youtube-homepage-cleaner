@@ -1,5 +1,8 @@
-## ADDED Requirements
+# interaction Specification
 
+## Purpose
+TBD - created by archiving change reverse-engineer-specs. Update Purpose after archive.
+## Requirements
 ### Requirement: Open in New Tab
 The system SHALL optionally force all video, shorts, and playlist clicks to open in a new browser tab, bypassing YouTube's SPA (Single Page Application) navigation.
 
@@ -15,3 +18,4 @@ The system SHALL NOT interfere with non-video interaction elements like menus, b
 #### Scenario: Click menu button
 - **WHEN** user clicks the "three dots" menu button on a video card
 - **THEN** the menu opens in-place normally
+

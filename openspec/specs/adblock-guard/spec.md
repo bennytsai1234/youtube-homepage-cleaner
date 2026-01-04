@@ -1,5 +1,8 @@
-## ADDED Requirements
+# adblock-guard Specification
 
+## Purpose
+TBD - created by archiving change reverse-engineer-specs. Update Purpose after archive.
+## Requirements
 ### Requirement: Anti-Adblock Popup Removal
 The system SHALL detect and close YouTube's "Ad blockers violate YouTube's Terms of Service" enforcement dialogs.
 
@@ -22,3 +25,4 @@ The system SHALL distinguish between legitimate dialogs (Membership join, Report
 #### Scenario: Whitelist check
 - **WHEN** a "Join Membership" dialog appears
 - **THEN** the system ignores it based on the presence of `ytd-sponsorships-offer-renderer`
+

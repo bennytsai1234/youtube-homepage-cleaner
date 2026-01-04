@@ -1,9 +1,15 @@
 # core-filtering Specification
 
 ## Purpose
-TBD - created by archiving change reverse-engineer-specs. Update Purpose after archive.
+
+The Core Filtering capability provides dynamic, logic-based video filtering that goes beyond static CSS rules. It handles scenarios requiring runtime calculations such as view count thresholds, video duration limits, and configurable grace periods. This module is the JavaScript counterpart to `StyleManager`'s CSS filtering.
+
+---
+
 ## Requirements
+
 ### Requirement: Low View Count Filtering
+
 The system SHALL hide videos that do not meet a configurable view count threshold to filter out low-quality content.
 
 #### Scenario: Hide low view video
@@ -16,7 +22,15 @@ The system SHALL hide videos that do not meet a configurable view count threshol
 - **WHEN** a live stream has low viewers
 - **THEN** it is filtered immediately without a grace period check
 
+#### Scenario: Grace period for new videos
+- **WHEN** a video was uploaded within the last 4 hours
+- **AND** its view count is below the threshold
+- **THEN** the video is NOT hidden (given time to accumulate views)
+
+---
+
 ### Requirement: Duration Filtering
+
 The system SHALL support filtering videos based on minimum and maximum duration constraints.
 
 #### Scenario: Hide too short video
@@ -25,10 +39,27 @@ The system SHALL support filtering videos based on minimum and maximum duration 
 - **AND** minimum duration is set to 5 minutes
 - **THEN** the video is hidden
 
+#### Scenario: Hide too long video
+- **WHEN** duration filtering is enabled
+- **AND** a video is 90 minutes long
+- **AND** maximum duration is set to 60 minutes
+- **THEN** the video is hidden
+
+---
+
 ### Requirement: Keyword and Channel Blacklist
+
 The system SHALL hide videos if their title or channel name matches user-defined keywords.
 
 #### Scenario: Keyword match
 - **WHEN** a video title contains a blacklisted keyword (e.g., "crypto")
 - **THEN** the video is hidden
 
+#### Scenario: Channel match
+- **WHEN** a video is from a blacklisted channel (e.g., "@SpammyChannel")
+- **THEN** the video is hidden
+
+#### Scenario: Case-insensitive matching
+- **WHEN** the blacklist contains "CRYPTO"
+- **AND** a video title contains "Crypto Trading 101"
+- **THEN** the video is hidden (case-insensitive)

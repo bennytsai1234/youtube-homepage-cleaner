@@ -4,7 +4,7 @@
 // @name:zh-CN   YouTube Cleaner - 隐藏 Shorts、推荐与杂讯
 // @name:ja      YouTube Cleaner - Shorts・おすすめ・雑音を非表示
 // @namespace    http://tampermonkey.net/
-// @version      1.6.1
+// @version      1.6.2
 // @description  Clean YouTube interface by hiding Shorts, suggestions, and clutter elements. 20+ custom rules.
 // @description:zh-TW  淨化 YouTube 介面，隱藏 Shorts、推薦內容與雜訊元素。20+ 過濾規則，完全可自訂。
 // @description:zh-CN  净化 YouTube 界面，隐藏 Shorts、推荐内容与杂讯元素。20+ 过滤规则，完全可自定义。
@@ -434,7 +434,8 @@
             if (ytLang.startsWith('zh-CN') || ytLang.startsWith('zh-Hans')) return 'zh-CN';
             if (ytLang.startsWith('zh')) return 'zh-TW';
             if (ytLang.startsWith('ja')) return 'ja';
-            return 'en';
+            if (ytLang.startsWith('en')) return 'en';
+            return 'zh-TW';
         },
 
         get lang() {
